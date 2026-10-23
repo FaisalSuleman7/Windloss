@@ -19,6 +19,8 @@ import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
 import { GuidedTour, TOUR_STEPS } from './components/GuidedTour';
 import { SelfTestView } from './components/SelfTestView';
+import { AboutTeamView } from './components/AboutTeamView';
+import { WelcomeTourModal } from './components/WelcomeTourModal';
 import { UploadZone } from './components/UploadZone';
 
 // 9 Step Components
@@ -38,6 +40,8 @@ import { applyDensityView } from './utils/view';
 export default function App() {
   const [activeStep, setActiveStep] = useState<number>(1);
   const [isSelfTestOpen, setIsSelfTestOpen] = useState<boolean>(false);
+  const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
+  const [showWelcomeTourModal, setShowWelcomeTourModal] = useState<boolean>(true);
   const [isDemoActive, setIsDemoActive] = useState<boolean>(false);
   const [showDemoDropModal, setShowDemoDropModal] = useState<boolean>(false);
   const [cachedRawFiles, setCachedRawFiles] = useState<{ name: string; content: string | ArrayBuffer }[]>([]);
@@ -77,14 +81,7 @@ export default function App() {
     return set;
   }, [cachedRawFiles, result]);
 
-  // Automatic Guided Tour start on first visit
-  useEffect(() => {
-    const hasSeenTour = localStorage.getItem('wind_estimator_tour_seen');
-    if (!hasSeenTour) {
-      setIsTourActive(true);
-      setTourStepIndex(0);
-    }
-  }, []);
+
 
   // Move to Step 2 only ONCE, when a NEW result arrives from a calculation started on Start page
   useEffect(() => {
@@ -173,9 +170,15 @@ export default function App() {
   // Guided Tour handlers
   const handleStartTour = () => {
     setIsSelfTestOpen(false);
+    setIsAboutOpen(false);
     setIsTourActive(true);
     setTourStepIndex(0);
     setActiveStep(TOUR_STEPS[0].sidebarStep);
+  };
+
+  const handleStartTourFromWelcome = () => {
+    setShowWelcomeTourModal(false);
+    handleStartTour();
   };
 
   const handleNextTourStep = () => {
@@ -208,8 +211,16 @@ export default function App() {
       <TopBar
         onLoadDemo={handleLoadDemoData}
         onStartTour={handleStartTour}
-        onOpenSelfTest={() => setIsSelfTestOpen((prev) => !prev)}
+        onOpenSelfTest={() => {
+          setIsSelfTestOpen((prev) => !prev);
+          setIsAboutOpen(false);
+        }}
+        onOpenAbout={() => {
+          setIsAboutOpen((prev) => !prev);
+          setIsSelfTestOpen(false);
+        }}
         isSelfTestOpen={isSelfTestOpen}
+        isAboutOpen={isAboutOpen}
         isDemoActive={isDemoActive}
         isCalculating={isCalculating}
       />
@@ -217,7 +228,7 @@ export default function App() {
       {/* Main Workspace */}
       <div className="flex-1 max-w-[1600px] w-full mx-auto flex flex-col md:flex-row">
         {/* Left Sidebar */}
-        {!isSelfTestOpen && (
+        {!isSelfTestOpen && !isAboutOpen && (
           <Sidebar
             activeStep={activeStep}
             onSelectStep={(stepId) => setActiveStep(stepId)}
@@ -258,12 +269,14 @@ export default function App() {
             </div>
           )}
 
-          {/* Render Self-Test View if Open */}
-          {isSelfTestOpen ? (
+          {/* Render About & Team View, Self-Test View, or 9 Steps */}
+          {isAboutOpen ? (
+            <AboutTeamView onBackToSteps={() => setIsAboutOpen(false)} />
+          ) : isSelfTestOpen ? (
             <div className="space-y-4">
               <button
                 onClick={() => setIsSelfTestOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center space-x-1.5 cursor-pointer mb-2"
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center space-x-2 cursor-pointer transition-colors shadow-xs mb-2"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Back to Loss Estimator Steps</span>
@@ -373,7 +386,7 @@ export default function App() {
       </div>
 
       {/* Guided Tour Tooltip */}
-      {isTourActive && !isSelfTestOpen && (
+      {isTourActive && !isSelfTestOpen && !isAboutOpen && (
         <GuidedTour
           currentStepIndex={tourStepIndex}
           onNext={handleNextTourStep}
@@ -414,10 +427,29 @@ export default function App() {
         </div>
       )}
 
+      {/* Welcome Card for Guided Tour (Item 1) */}
+      <WelcomeTourModal
+        isOpen={showWelcomeTourModal}
+        onStartTour={handleStartTourFromWelcome}
+        onSkip={() => setShowWelcomeTourModal(false)}
+      />
+
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3 text-xs text-slate-500 px-4 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
         <span>Wind Outage Loss Estimator &bull; Business-Interruption Calculation Core</span>
-        <span>100% Client-Side In-Browser Execution &bull; Zero External AI/API Calls</span>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => {
+              setIsAboutOpen(true);
+              setIsSelfTestOpen(false);
+            }}
+            className="hover:underline text-slate-600 dark:text-slate-400 font-medium cursor-pointer"
+          >
+            About &amp; Team
+          </button>
+          <span>&bull;</span>
+          <span>100% Client-Side In-Browser Execution &bull; Zero External AI/API Calls</span>
+        </div>
       </footer>
     </div>
   );

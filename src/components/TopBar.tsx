@@ -1,12 +1,14 @@
 import React from 'react';
-import { Wind, Database, Sparkles, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Wind, Database, Sparkles, ShieldCheck, CheckCircle2, Users } from 'lucide-react';
 import { COLORS } from '../utils/colors';
 
 interface TopBarProps {
   onLoadDemo: () => void;
   onStartTour: () => void;
   onOpenSelfTest: () => void;
+  onOpenAbout: () => void;
   isSelfTestOpen: boolean;
+  isAboutOpen: boolean;
   isDemoActive: boolean;
   isCalculating: boolean;
 }
@@ -15,7 +17,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   onLoadDemo,
   onStartTour,
   onOpenSelfTest,
+  onOpenAbout,
   isSelfTestOpen,
+  isAboutOpen,
   isDemoActive,
   isCalculating,
 }) => {
@@ -71,6 +75,21 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
             <span className="hidden sm:inline">Start guided tour</span>
             <span className="sm:hidden">Tour</span>
+          </button>
+
+          {/* About & Team button */}
+          <button
+            onClick={onOpenAbout}
+            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              isAboutOpen
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
+            }`}
+            title="About the tool, team, and hackathon highlights"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">About &amp; Team</span>
+            <span className="sm:hidden">About</span>
           </button>
 
           {/* Self-test button */}

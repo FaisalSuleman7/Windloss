@@ -46,6 +46,33 @@ export function generatePredictionsCSV(result: EngineResult): string {
 }
 
 /**
+ * Generates single-turbine predictions CSV matching the judges' input format:
+ * turbine_name,timestamp,wind_speed,power_kw
+ */
+export function generateJudgesPredictionsCSV(
+  result: EngineResult,
+  turbineName: string
+): string {
+  const { report } = result;
+  const est = report.turbines[turbineName];
+  if (!est) return '';
+
+  const rows: string[] = ['turbine_name,timestamp,wind_speed,power_kw'];
+
+  for (let i = 0; i < report.outageDates.length; i++) {
+    const ts = report.outageDates[i];
+    const ws = est.predictedWindOutage[i];
+    const p = est.expectedPowerOutage[i];
+    const wsStr = Number.isNaN(ws) ? '0.0000' : ws.toFixed(4);
+    const pStr = Number.isNaN(p) ? '0.00' : p.toFixed(2);
+    rows.push(`${turbineName},${ts},${wsStr},${pStr}`);
+  }
+
+  return rows.join('\n');
+}
+
+
+/**
  * 2. Generates wide predictions CSV + park total:
  * timestamp,{T}_wind_speed_pred,{T}_power_pred_kw...,park_power_pred_kw
  */

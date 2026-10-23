@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#1D3557" />
+      <stop offset="100%" stop-color="#0F2840" />
+    </linearGradient>
+    <linearGradient id="bladeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#94A3B8" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#34D399" />
+    </linearGradient>
+    <linearGradient id="hillGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="1" />
+    </linearGradient>
+    <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334155" stroke-width="0.5" stroke-opacity="0.4" />
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="720" fill="url(#bgGrad)" />
+  <rect width="1280" height="720" fill="url(#gridPattern)" />
+
+  <!-- Stars / ambient dots -->
+  <circle cx="150" cy="120" r="1.5" fill="#38BDF8" opacity="0.8" />
+  <circle cx="320" cy="90" r="2" fill="#FFFFFF" opacity="0.6" />
+  <circle cx="780" cy="110" r="2" fill="#60A5FA" opacity="0.7" />
+  <circle cx="1080" cy="160" r="1.5" fill="#34D399" opacity="0.8" />
+  <circle cx="920" cy="80" r="1.5" fill="#FFFFFF" opacity="0.5" />
+
+  <!-- Rolling hills in background -->
+  <path d="M0,520 Q320,440 640,490 T1280,480 L1280,720 L0,720 Z" fill="url(#hillGrad)" />
+  <path d="M0,570 Q400,500 800,560 T1280,540 L1280,720 L0,720 Z" fill="#0B132B" opacity="0.85" />
+
+  <!-- Wind Streamlines -->
+  <path d="M-50,300 C200,280 400,340 700,310 S1100,280 1330,300" fill="none" stroke="#38BDF8" stroke-width="2" stroke-dasharray="8 6" opacity="0.4" />
+  <path d="M-50,340 C250,310 500,370 850,340 S1150,310 1330,330" fill="none" stroke="#60A5FA" stroke-width="2.5" stroke-dasharray="12 8" opacity="0.5" />
+  <path d="M-50,380 C180,360 450,410 750,380 S1120,350 1330,370" fill="none" stroke="#34D399" stroke-width="1.5" stroke-dasharray="10 10" opacity="0.4" />
+
+  <!-- Wind Turbine 1 (Main, Left-Center) -->
+  <g transform="translate(420, 240)">
+    <!-- Tower -->
+    <polygon points="-6,260 6,260 3,0 -3,0" fill="#E2E8F0" />
+    <polygon points="-6,260 -3,0 0,0 0,260" fill="#CBD5E1" opacity="0.6" />
+    <!-- Nacelle -->
+    <rect x="-18" y="-10" width="36" height="20" rx="6" fill="#F8FAFC" />
+    <circle cx="0" cy="0" r="8" fill="#0284C7" />
+    <!-- Blades (Rotated) -->
+    <g transform="rotate(35)">
+      <!-- Blade 1 -->
+      <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      <!-- Blade 2 -->
+      <g transform="rotate(120)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+      <!-- Blade 3 -->
+      <g transform="rotate(240)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+    </g>
+    <!-- Hub cap -->
+    <circle cx="0" cy="0" r="5" fill="#0F172A" />
+  </g>
+
+  <!-- Wind Turbine 2 (Smaller, Right) -->
+  <g transform="translate(860, 310) scale(0.72)">
+    <polygon points="-6,260 6,260 3,0 -3,0" fill="#CBD5E1" />
+    <rect x="-18" y="-10" width="36" height="20" rx="6" fill="#E2E8F0" />
+    <circle cx="0" cy="0" r="8" fill="#059669" />
+    <g transform="rotate(75)">
+      <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      <g transform="rotate(120)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+      <g transform="rotate(240)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+    </g>
+    <circle cx="0" cy="0" r="5" fill="#0F172A" />
+  </g>
+
+  <!-- Wind Turbine 3 (Distant, Far Left) -->
+  <g transform="translate(190, 370) scale(0.52)">
+    <polygon points="-6,260 6,260 3,0 -3,0" fill="#94A3B8" />
+    <rect x="-18" y="-10" width="36" height="20" rx="6" fill="#CBD5E1" />
+    <circle cx="0" cy="0" r="8" fill="#38BDF8" />
+    <g transform="rotate(15)">
+      <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      <g transform="rotate(120)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+      <g transform="rotate(240)">
+        <path d="M0,0 Q-8,-90 0,-170 Q8,-90 0,0" fill="url(#bladeGrad)" />
+      </g>
+    </g>
+  </g>
+
+  <!-- Hackathon Banner Box -->
+  <g transform="translate(640, 160)">
+    <rect x="-380" y="-85" width="760" height="170" rx="20" fill="#0B132B" fill-opacity="0.85" stroke="#334155" stroke-width="1.5" />
+    
+    <!-- Top badge -->
+    <rect x="-190" y="-68" width="380" height="28" rx="14" fill="#1E293B" stroke="#475569" stroke-width="1" />
+    <text x="0" y="-50" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#38BDF8" letter-spacing="2" text-anchor="middle">
+      ENERGY &amp; AI HACKATHON • MUNICH 2026
+    </text>
+
+    <!-- Main Title -->
+    <text x="0" y="-10" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="900" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">
+      WATT THE HACK
+    </text>
+
+    <!-- Challenge Subtitle -->
+    <text x="0" y="24" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="700" fill="#E2E8F0" text-anchor="middle">
+      BayWa r.e. — Wind Farm Energy Loss Prediction
+    </text>
+
+    <!-- Details Tagline -->
+    <text x="0" y="58" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" fill="#94A3B8" text-anchor="middle">
+      24 October 2026 • 100% Client-Side Loss Reconstruction Core
+    </text>
+  </g>
+</svg>

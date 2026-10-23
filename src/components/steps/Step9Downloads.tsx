@@ -8,6 +8,7 @@ import {
   Table,
   CheckCircle2,
   Calendar,
+  Files,
 } from 'lucide-react';
 import {
   LineChart,
@@ -23,6 +24,7 @@ import {
   generatePredictionsWideCSV,
   generateFullPeriodCSV,
   generateSummaryCSV,
+  generateJudgesPredictionsCSV,
   generateClaimEmail,
   downloadFile,
 } from '../../utils/export';
@@ -128,6 +130,25 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
       `summary_Park_${report.targetPark}_loss${densitySuffix}.csv`,
       'text/csv;charset=utf-8'
     );
+  };
+
+  const [isDownloadingJudges, setIsDownloadingJudges] = React.useState<boolean>(false);
+
+  const handleDownloadJudgesFormat = async () => {
+    setIsDownloadingJudges(true);
+    try {
+      for (let i = 0; i < report.targetTurbines.length; i++) {
+        const tName = report.targetTurbines[i];
+        const csv = generateJudgesPredictionsCSV(result, tName);
+        const fileName = `${tName}_predictions${densitySuffix}.csv`;
+        downloadFile(csv, fileName, 'text/csv;charset=utf-8');
+        if (i < report.targetTurbines.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+    } finally {
+      setIsDownloadingJudges(false);
+    }
   };
 
   const handlePrint = () => {
@@ -549,6 +570,37 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
           >
             <Download className="w-4 h-4" />
             <span>Download Summary CSV</span>
+          </button>
+        </div>
+
+        {/* Card 5: Predictions in input format (one file per turbine) */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="p-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400">
+                <Files className="w-5 h-5" />
+              </div>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-300 uppercase">
+                Judges Format
+              </span>
+            </div>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+              Predictions in input format (one file per turbine)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Generates individual {report.targetTurbines.map((t) => `${t}_predictions${densitySuffix}.csv`).join(', ')} ({outage.stampsCount.toLocaleString('en-US')} rows each) matching the judges' submission schema.
+            </p>
+            <div className="text-[11px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded text-slate-600 dark:text-slate-300 overflow-x-auto">
+              turbine_name,timestamp,wind_speed,power_kw
+            </div>
+          </div>
+          <button
+            onClick={handleDownloadJudgesFormat}
+            disabled={isDownloadingJudges}
+            className="w-full py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span>{isDownloadingJudges ? 'Downloading files...' : 'Download per-turbine files'}</span>
           </button>
         </div>
       </div>

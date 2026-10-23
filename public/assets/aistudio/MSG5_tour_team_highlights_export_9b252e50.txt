@@ -1,0 +1,48 @@
+Please add the four items below. Do NOT change the calculation engine, the Self-test, the reference values or any number shown on Steps 2-9. Keep the existing colours (target #0072B2, park H #E69F00, park O #009E73, outage #CC79A7, navy #1D3557) and the existing animations.
+
+ITEM 1 - Offer the guided tour on every page load
+- Every time the website is opened or refreshed, show a small centred welcome card (not full-screen, no blur, light dimmed background) with:
+  title "Welcome to the Wind Outage Loss Estimator"
+  text "Take a 1-minute tour of the 9 steps?"
+  buttons: "Start tour" (primary) and "Skip" (secondary). Esc and a click outside also skip.
+- "Start tour" starts the existing guided tour. "Skip" closes the card and the user works normally.
+- Do not store "tour seen" in localStorage for this card; it must appear again after each refresh. The header button "Start guided tour" keeps working as now.
+- The card must never block file upload or the Self-test once it is closed.
+
+ITEM 2 - "About & Team" page
+- Add a header button "About & Team" (next to "Start guided tour") and a small link "About & Team" in the footer. It opens a separate page (like Self-test, with a "Back to Loss Estimator Steps" button). It is NOT a numbered step in the sidebar.
+- Put all content in ONE easy-to-edit file: src/config/about.ts, e.g.
+  export const TEAM = [
+    { name: "Hafiz Muhammad Faisal", role: "Team lead - method, engine and tool", affiliation: "Technical University of Munich (TUM)", photo: "", linkedin: "", email: "" },
+  ];
+  export const EVENT = { name: "WATT THE HACK - Munich Energy & AI Hackathon", date: "24 October 2026", challenge: "BayWa r.e. - Wind Farm Energy Loss Prediction" };
+  export const HIGHLIGHTS = [ /* { src: "/highlights/01.jpg", caption: "..." } */ ];
+- Team section: up to 4 member cards (array is cut at 4). Show ONLY the members in the array, so with one member there is one centred card and no empty placeholders. Card: round photo, or initials in a navy circle if photo is empty; name; role; affiliation; optional LinkedIn/e-mail icons only if filled.
+- Above the team: a short "About this tool" text (3 sentences): what problem it solves (energy lost during a wind-park outage, for business-interruption insurance), how (rebuild the wind from neighbouring parks, learned relation, power curve), and that it runs 100 % in the browser with no data upload to any server.
+- Below: the event name, date and challenge from EVENT.
+
+ITEM 3 - Event highlights slider (on the About & Team page, below the team)
+- Title "Highlights from the event". Images come from HIGHLIGHTS (5-7 pictures planned; files in public/highlights/).
+- Slider: one picture at a time, 16:9 frame, object-fit cover, rounded corners, caption below.
+  Auto-advance every 5 s with a soft slide/fade; pause on mouse hover and when the browser tab is hidden; left/right arrow buttons; dots; keyboard arrows; swipe on touch screens; respect prefers-reduced-motion (no auto-play then).
+- Lazy-load images; if an image fails to load, skip it.
+- If HIGHLIGHTS is empty, hide the whole section (no empty box).
+- Please also add ONE example entry using a simple SVG placeholder so I can see it working, and tell me exactly where to put my photo files and how to list them.
+
+ITEM 4 - Extra export in the judges' input format (Step 9, Downloads)
+- Add a card "Predictions in input format (one file per turbine)" with a button "Download per-turbine files".
+- For each target turbine create {T}_predictions.csv with columns exactly:
+  turbine_name,timestamp,wind_speed,power_kw
+  - one row per 10-minute outage stamp (432 rows per turbine for the demo), timestamp "YYYY-MM-DD HH:mm" in local (Berlin) time, wind_speed = predicted wind (4 decimals), power_kw = predicted power (2 decimals), comma separator, dot decimal, no empty values.
+- Download the files one after another (or as one .zip if a zip library is already available). Use the same numbers as the existing per-turbine predictions export, and follow the density choice exactly like the other exports.
+
+FINAL CHECK (please confirm each point):
+1. Refresh the page -> the welcome card appears; "Skip" closes it; refresh again -> it appears again.
+2. "Start tour" runs the existing 8-step tour.
+3. Self-test with the 13 demo files -> still 29 / 29 passed; park total 317,354 kWh.
+4. About & Team shows one card for Hafiz Muhammad Faisal (TUM) with initials, no empty slots; adding a second entry in about.ts shows two cards; a fifth entry is ignored.
+5. The highlights slider works with the example entry; with an empty HIGHLIGHTS array the section is hidden.
+6. Step 9: T1_predictions.csv first row is
+   T1,2026-09-01 00:00,8.4187,2854.25
+   and each file has 432 data rows.
+7. No console errors; the layout still works at 1366 x 768 and on a phone width.
