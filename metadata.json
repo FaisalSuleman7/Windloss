@@ -1,0 +1,6 @@
+{
+  "name": "Wind Outage Loss Estimator",
+  "description": "Deterministic wind park production loss estimation during communication and grid outages for insurance claims.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
