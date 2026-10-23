@@ -11,14 +11,18 @@ import {
   Legend,
 } from 'recharts';
 import { EngineResult } from '../../engine';
-import { COLORS, getTurbineColor } from '../../utils/colors';
+import { COLORS, getTurbineColor, makeParkColors } from '../../utils/colors';
 
 interface Step6PredictedWindProps {
   result: EngineResult;
 }
 
 export const Step6PredictedWind: React.FC<Step6PredictedWindProps> = ({ result }) => {
-  const { report, outage, screening, grid } = result;
+  const { report, outage, screening } = result;
+
+  const parkColor = useMemo(() => {
+    return makeParkColors(report.chosenParks, report.targetPark);
+  }, [report.chosenParks, report.targetPark]);
 
   // Active series visibility toggles
   const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>(() => {
@@ -36,11 +40,10 @@ export const Step6PredictedWind: React.FC<Step6PredictedWindProps> = ({ result }
     setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Build chart dataset for outage interval
+  // Build chart dataset for outage interval with all stamps (step = 1)
   const chartData = useMemo(() => {
     const stampsCount = outage.stampsCount;
-    // We can sample ~120 to 180 points for smooth performance
-    const step = Math.max(1, Math.floor(stampsCount / 144));
+    const step = 1; // Plot every stamp so chart ends at exact outage end (e.g. 23:50)
     const data: Record<string, any>[] = [];
 
     for (let i = 0; i < stampsCount; i += step) {
@@ -123,7 +126,7 @@ export const Step6PredictedWind: React.FC<Step6PredictedWindProps> = ({ result }
           {report.chosenParks.map((p) => {
             const key = `Park_${p}`;
             const isVisible = visibleSeries[key] !== false;
-            const color = p === 'H' ? COLORS.parkH : p === 'O' ? COLORS.parkO : COLORS.navy;
+            const color = parkColor(p);
             return (
               <button
                 key={key}
@@ -225,7 +228,7 @@ export const Step6PredictedWind: React.FC<Step6PredictedWindProps> = ({ result }
               {report.chosenParks.map((p) => {
                 const key = `Park_${p}`;
                 if (visibleSeries[key] === false) return null;
-                const color = p === 'H' ? COLORS.parkH : p === 'O' ? COLORS.parkO : COLORS.navy;
+                const color = parkColor(p);
                 return (
                   <Line
                     key={key}

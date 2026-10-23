@@ -17,8 +17,9 @@ import {
   Legend,
   ReferenceArea,
 } from 'recharts';
-import { EngineResult, TrainingDataOption, Grid } from '../../engine';
-import { COLORS } from '../../utils/colors';
+import { EngineResult, TrainingDataOption } from '../../engine';
+import { COLORS, makeParkColors } from '../../utils/colors';
+import { DensityToggle } from '../DensityToggle';
 
 interface Step3OutageProps {
   result: EngineResult;
@@ -27,12 +28,16 @@ interface Step3OutageProps {
     trainingOption?: TrainingDataOption
   ) => void;
   isCalculating: boolean;
+  useDensity?: boolean;
+  onToggleDensity?: (useDensity: boolean) => void;
 }
 
 export const Step3Outage: React.FC<Step3OutageProps> = ({
   result,
   onUpdateOptions,
   isCalculating,
+  useDensity = false,
+  onToggleDensity,
 }) => {
   const { grid, outage, report, screening } = result;
 
@@ -42,6 +47,14 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
   const [activeTraining, setActiveTraining] = useState<TrainingDataOption>(
     (report.trainingOption as TrainingDataOption) || 'all_measured'
   );
+
+  const refParkNames = useMemo(() => {
+    return Object.keys(screening.parkMeans).sort();
+  }, [screening.parkMeans]);
+
+  const parkColor = useMemo(() => {
+    return makeParkColors(refParkNames, outage.targetPark);
+  }, [refParkNames, outage.targetPark]);
 
   const handleApplyChange = () => {
     let sIdx = 0;
@@ -68,36 +81,34 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
     onUpdateOptions(undefined, opt);
   };
 
-  // Build chart data around the outage (+/- 48 hours buffer)
+  // Build chart data around the outage (+/- 48 hours buffer) with step = 1
   const chartData = useMemo(() => {
     const bufferStamps = 6 * 48; // 48 hours = 288 stamps
     const startIdx = Math.max(0, outage.startIndex - bufferStamps);
     const endIdx = Math.min(grid.nRows - 1, outage.endIndex + bufferStamps);
 
-    const step = Math.max(1, Math.floor((endIdx - startIdx) / 180)); // ~180 sample points for crisp chart
-    const data: {
-      timestamp: string;
-      targetWind: number | null;
-      parkH: number | null;
-      parkO: number | null;
-    }[] = [];
+    const step = 1; // plot every stamp (step = 1)
+    const data: Record<string, any>[] = [];
 
     for (let i = startIdx; i <= endIdx; i += step) {
       const ts = grid.dateStrings[i];
       const targetVal = screening.targetParkMean[i];
-      const hVal = screening.parkMeans['H'] ? screening.parkMeans['H'][i] : null;
-      const oVal = screening.parkMeans['O'] ? screening.parkMeans['O'][i] : null;
-
-      data.push({
+      const entry: Record<string, any> = {
         timestamp: ts,
         targetWind: !Number.isNaN(targetVal) ? Number(targetVal.toFixed(2)) : null,
-        parkH: hVal !== null && !Number.isNaN(hVal) ? Number(hVal.toFixed(2)) : null,
-        parkO: oVal !== null && !Number.isNaN(oVal) ? Number(oVal.toFixed(2)) : null,
-      });
+      };
+
+      for (const p of refParkNames) {
+        const series = screening.parkMeans[p];
+        const val = series ? series[i] : null;
+        entry[`park_${p}`] = val !== null && !Number.isNaN(val) ? Number(val.toFixed(2)) : null;
+      }
+
+      data.push(entry);
     }
 
     return data;
-  }, [grid, outage, screening]);
+  }, [grid, outage, screening, refParkNames]);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -139,12 +150,11 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
             <select
               value={selectedPark}
               onChange={(e) => setSelectedPark(e.target.value)}
-              disabled={isCalculating}
-              className="w-full px-3 py-2 text-sm font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-medium focus:ring-2 focus:ring-blue-500"
             >
-              {grid.parks.map((p) => (
+              {Array.from(new Set(Object.values(grid.turbineParkMap))).map((p) => (
                 <option key={p} value={p}>
-                  Park {p} ({grid.parkTurbinesMap[p]?.join(', ')})
+                  Park {p}
                 </option>
               ))}
             </select>
@@ -152,111 +162,153 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
 
           <div>
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wider">
-              Start Timestamp (Local)
+              Outage Start
             </label>
             <input
               type="text"
               value={startStr}
               onChange={(e) => setStartStr(e.target.value)}
-              disabled={isCalculating}
-              placeholder="YYYY-MM-DD HH:MM"
-              className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 uppercase tracking-wider">
-              End Timestamp (Inclusive)
+              Outage End
             </label>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={endStr}
-                onChange={(e) => setEndStr(e.target.value)}
-                disabled={isCalculating}
-                placeholder="YYYY-MM-DD HH:MM"
-                className="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                onClick={handleApplyChange}
-                disabled={isCalculating}
-                className="px-3.5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-              >
-                Apply
-              </button>
-            </div>
+            <input
+              type="text"
+              value={endStr}
+              onChange={(e) => setEndStr(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl font-mono focus:ring-2 focus:ring-blue-500"
+            />
           </div>
         </div>
 
-        {/* Training Data Option */}
-        <div>
-          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wider">
-            Training-Data Selection
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label
-              className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                activeTraining === 'all_measured'
-                  ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/20'
-                  : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-              }`}
-            >
-              <input
-                type="radio"
-                name="trainingOptionRadio"
-                value="all_measured"
-                checked={activeTraining === 'all_measured'}
-                onChange={() => handleTrainingChange('all_measured')}
-                disabled={isCalculating}
-                className="mt-0.5 text-blue-600"
-              />
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  All measured data (Default)
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Maximizes training observations using all verified data outside the outage.
-                </p>
-              </div>
-            </label>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Affected Turbines: <strong className="text-slate-800 dark:text-slate-200">{outage.targetTurbines.join(', ')}</strong>
+          </div>
+          <button
+            onClick={handleApplyChange}
+            disabled={isCalculating}
+            className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+          >
+            {isCalculating ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Recalculating...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Apply & Re-estimate Outage</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
-            <label
-              className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                activeTraining === 'before_outage'
-                  ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/20'
-                  : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-              }`}
-            >
-              <input
-                type="radio"
-                name="trainingOptionRadio"
-                value="before_outage"
-                checked={activeTraining === 'before_outage'}
-                onChange={() => handleTrainingChange('before_outage')}
-                disabled={isCalculating}
-                className="mt-0.5 text-blue-600"
-              />
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  Only before the outage
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Restricts regression training strictly to periods before outage start.
-                </p>
+      {/* Training Data Option Radio Cards */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+            Training Data Selection
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Select which historical data periods are utilized to fit model coefficients.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Option 1 */}
+          <div
+            onClick={() => handleTrainingChange('all_measured')}
+            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+              activeTraining === 'all_measured'
+                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                All measured data
+              </span>
+              <div
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  activeTraining === 'all_measured'
+                    ? 'border-blue-600 bg-blue-600'
+                    : 'border-slate-400'
+                }`}
+              >
+                {activeTraining === 'all_measured' && (
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                )}
               </div>
-            </label>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Default. Maximum statistical power across all non-outage periods.
+            </p>
+          </div>
+
+          {/* Option 2 */}
+          <div
+            onClick={() => handleTrainingChange('before_outage')}
+            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+              activeTraining === 'before_outage'
+                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                Data before outage only
+              </span>
+              <div
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  activeTraining === 'before_outage'
+                    ? 'border-blue-600 bg-blue-600'
+                    : 'border-slate-400'
+                }`}
+              >
+                {activeTraining === 'before_outage' && (
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Uses only measured timestamps strictly preceding the detected outage interval.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Outage Shaded Wind Speed Chart */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-            Parks Wind Speed Around Outage (Shaded Outage Period #CC79A7)
+      {/* Air Density Selection */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm tracking-wider uppercase text-xs">
+            AIR DENSITY (TEMPERATURE &amp; PRESSURE)
           </h3>
-          <span className="text-xs text-slate-500">
-            Shaded interval: {outage.startDateStr} to {outage.endDateStr} ({outage.durationHours.toFixed(1)} h)
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Choose whether headline energy loss numbers reflect standard density (1.225 kg/m³) or site-specific density reconstructed from neighbouring parks.
+          </p>
+        </div>
+
+        <DensityToggle
+          result={result}
+          useDensity={useDensity}
+          onToggle={onToggleDensity || (() => {})}
+        />
+      </div>
+
+      {/* Outage Timeline Chart */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+            Parks Wind Speed Around Outage Window (&plusmn;48 h context)
+          </h3>
+          <span className="text-xs text-slate-500 font-mono">
+            {outage.startDateStr} &rarr; {outage.endDateStr}
           </span>
         </div>
 
@@ -264,7 +316,6 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.gridLine} opacity={0.6} />
-
               <XAxis
                 dataKey="timestamp"
                 tick={{ fontSize: 12, fill: '#475569' }}
@@ -336,31 +387,19 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
                 connectNulls={false}
               />
 
-              {/* Park H line */}
-              {screening.parkMeans['H'] && (
+              {/* Reference Park lines */}
+              {refParkNames.map((p) => (
                 <Line
+                  key={p}
                   type="monotone"
-                  dataKey="parkH"
-                  name="Park H Mean (neighbour)"
-                  stroke={COLORS.parkH}
+                  dataKey={`park_${p}`}
+                  name={`Park ${p} mean (neighbour)`}
+                  stroke={parkColor(p)}
                   strokeWidth={2}
                   dot={false}
                   connectNulls={true}
                 />
-              )}
-
-              {/* Park O line */}
-              {screening.parkMeans['O'] && (
-                <Line
-                  type="monotone"
-                  dataKey="parkO"
-                  name="Park O Mean (neighbour)"
-                  stroke={COLORS.parkO}
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls={true}
-                />
-              )}
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>

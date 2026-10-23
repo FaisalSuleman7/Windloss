@@ -2,6 +2,8 @@ import React from 'react';
 import { TableProperties, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { EngineResult } from '../../engine';
 import { AvailabilityStrip } from '../AvailabilityStrip';
+import { DataExplorationChart } from '../DataExplorationChart';
+import { WindRoseView } from '../WindRoseView';
 import { formatPercent } from '../../utils/formatters';
 
 interface Step2DataProps {
@@ -110,6 +112,12 @@ export const Step2Data: React.FC<Step2DataProps> = ({ result }) => {
         </p>
         <AvailabilityStrip grid={grid} outage={outage} />
       </div>
+
+      {/* 1. Look at the data before any model */}
+      <DataExplorationChart grid={grid} outage={outage} />
+
+      {/* 2. Wind roses */}
+      <WindRoseView grid={grid} outage={outage} />
 
       {/* Per-Turbine Summary Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">

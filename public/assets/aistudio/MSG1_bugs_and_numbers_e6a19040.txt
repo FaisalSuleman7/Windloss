@@ -1,0 +1,53 @@
+UPDATE 1 of 3 — BUG FIXES AND WRONG NUMBERS. Do not redesign anything. Keep all existing styling and animations. The calculation engine (src/engine/) is verified: do NOT change any existing calculation. Only the additions written below are allowed. After this update the Self-test page must still be all green.
+
+1) NAVIGATION BUG (App.tsx). After results exist, clicking "Start" in the sidebar jumps back to Step 2, because this effect runs on every render:
+   useEffect(() => { if (result && activeStep === 1) setActiveStep(2) }, [result, activeStep])
+   Replace it: move to Step 2 only ONCE, when a NEW result arrives from a calculation that was started on the Start page (file upload or demo). Use two refs: lastResultRef (the last result seen) and advanceOnNextResult (set to true in handleFilesReady and in the demo loader). In the effect: if result !== lastResultRef.current, store it; if advanceOnNextResult.current && activeStep === 1 && !isTourActive then setActiveStep(2); then set advanceOnNextResult.current = false. Recalculations from Step 3/4 must not change the page.
+
+2) STEP 5 SHOWS INVENTED ACCURACY NUMBERS (Step5Method.tsx, "Backtest Evaluation Metrics per Turbine"):
+   - "Wind RMSE" currently shows t.model.sigmaGlobal (in-sample residual spread) — wrong.
+   - "Wind MAE" currently shows sigmaGlobal * 0.8 — invented.
+   - "Power RMSE" / "Power MAE" are the hard-coded texts "~145 kW" / "~98 kW" — invented.
+   Fix: for each turbine t, show the MEAN over chosenCombination.windows of w.turbines[t].windRMSE, .windMAE, .powerRMSE, .powerMAE (skip NaN). Wind with 2 decimals (m/s), power rounded with thousands separator (kW).
+   Check values on the BayWa demo: T1 1.32 m/s, 0.99 m/s, 747 kW, 514 kW · T2 1.17, 0.89, 683, 477 · T3 1.17, 0.89, 661, 456.
+
+3) STEP 5 SCATTER IS IN-SAMPLE. It uses the final model (trained on all data, including the test windows) and only T1, cut to 200 points. Fix:
+   - engine/backtest.ts (additive only): add to ParkCombinationResult the OPTIONAL field
+     scatterSamples?: Record<string, { real: number; pred: number }[]>;
+     initialise scatterSamples[tName] = [] next to turbineDeltaEArrays; inside the loop over testStamps, right after eWind = vReal - vHat is computed (both values valid), add:
+     if (tau % 6 === 0) scatterSamples[tName].push({ real: vReal, pred: vHat });
+     and return scatterSamples in the result object. Nothing else in the backtest changes.
+   - Step 5: the scatter uses chosenCombination.scatterSamples[selectedTurbine] (all points, fillOpacity 0.35, isAnimationActive false), with small buttons T1/T2/T3… to choose the turbine. Header text: "Out-of-sample: hourly points from the N test windows (X points)". Title: "Predicted vs. real wind speed (points on the 1:1 line = perfect)". Check: T1 has 1,696 points.
+   - Step 5 text "Converting average predicted wind directly to power severely under-estimates production." → "Converting the predicted (smooth) wind directly to power systematically underestimates production, because the curve is steepest where most wind speeds lie."
+   - Bar chart title → "Park energy error (ΔE %) in each test window"; its y-axis label → "Park ΔE (%)" (the old label is cut off).
+
+4) STEP 6 CHART ENDS AT 23:30 instead of 23:50: it plots every 3rd stamp (step = floor(stampsCount/144)). Use step = 1 (all 432 stamps).
+
+5) STEP 7 WHISKERS ARE SYMMETRIC: <ErrorBar dataKey="errorPlus"> draws ±errorPlus. Add to each bar datum errorRange: [lost − low, high − lost] and use <ErrorBar dataKey="errorRange" …>. Check T1 whisker: 72,732 – 114,208 kWh around 92,105.
+   Also on both Step-7 y-axes: tickFormatter (v ≥ 1000 → "140k"), width 70, labels "Lost energy (kWh)" and "Cumulative lost energy (kWh)" (they are cut off now).
+
+6) PARK NAMES ARE HARD-CODED (H, O, T). The tool must work for any park letters. Add to utils/colors.ts:
+   export const REF_PARK_PALETTE = ['#E69F00','#009E73','#7A5195','#D55E00','#56B4E9','#CC9A06','#8E6C8A'];
+   export function makeParkColors(parks: string[], targetPark: string): (park: string) => string
+   (target park → '#0072B2'; reference parks sorted alphabetically → palette in that order).
+   Use it everywhere a park colour/label is needed:
+   - AvailabilityStrip legend: "Target park {target}", one entry "Reference park {p}" per real reference park, "Missing". (Now it always says "Target Park T / Ref Park H / Ref Park O", even when park H is not uploaded.)
+   - Step 3 chart: one line per key of screening.parkMeans (name "Park {p} mean (neighbour)"), not only 'H' and 'O'; and plot every stamp (step = 1).
+   - Step 6: park line colours from makeParkColors (not p === 'H' ? … : …).
+
+7) AVAILABILITY STRIP: the turbine labels do not line up with the rows (the 800-px canvas is stretched by CSS while labels have a fixed 22 px height). Rewrite: measure the container width with a ResizeObserver, set canvas.width = width·devicePixelRatio and canvas.style.width = width px, draw the turbine labels INSIDE the canvas (56 px label column, 24 px per row, target turbines' labels in #0072B2), one block per pixel column (coloured if ≥ 50 % of the stamps in that column are measured, else pink #CC79A7), a #9D174D frame around the outage, and a time axis with the first day of each month plus the text "outage MM-DD HH:MM → MM-DD HH:MM".
+
+8) E-MAIL DENSITY SENTENCE (utils/export.ts generateClaimEmail). Now it writes "0.00 %" when density is not available, which is a false statement. Three cases:
+   - not available: "Air density: not included, because no varying air-pressure measurements were available in the reference data."
+   - available (default): "Sensitivity: taking air density into account (temperature and pressure of park {refPark}) would change the estimate by {x.x} % (to {corrected} kWh)."
+   (A third case is added in update 2.)
+
+9) PRINT PRINTS THE WHOLE PAGE. "Print report" must print ONLY the audit report. Render the report body twice in Step 9: once as the on-screen preview (class "no-print"), and once through React createPortal into document.body inside <div id="print-root" className="print-only">. index.css:
+   .print-only { display: none; }
+   @page { size: A4; margin: 12mm; }
+   @media print { #root { display: none !important; } .print-only { display: block !important; } html, body { background: #fff !important; } .break-inside-avoid { break-inside: avoid; } }
+   (Remove the old @media print rules.) The report content itself is extended in update 2.
+
+10) package.json: change "esbuild": "^0.25.0" to "^0.28.0" (with 0.25, `npm install` fails on the Vite 8 peer range).
+
+CHECK AFTER THIS UPDATE: Self-test all green · Start reachable after results · Step 5 table shows the check values above · Step 6 ends at 23:50 · T1 whisker 72,732–114,208 · printing shows only the report.

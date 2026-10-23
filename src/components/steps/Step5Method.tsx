@@ -1,8 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   LineChart as LineChartIcon,
   Calculator,
-  ShieldAlert,
   BarChart2,
   ScatterChart as ScatterIcon,
 } from 'lucide-react';
@@ -16,11 +15,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ReferenceLine,
   Cell,
 } from 'recharts';
-import { EngineResult, predictWind } from '../../engine';
+import { EngineResult } from '../../engine';
 import { COLORS } from '../../utils/colors';
 import { formatPercent, formatCoeff } from '../../utils/formatters';
 
@@ -29,15 +27,53 @@ interface Step5MethodProps {
 }
 
 export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
-  const { report, chosenCombination, grid } = result;
+  const { report, chosenCombination } = result;
   const turbinesList = Object.values(report.turbines);
+  const targetTurbines = report.targetTurbines;
+
+  const [selectedScatterTurbine, setSelectedScatterTurbine] = useState<string>(
+    targetTurbines[0] || 'T1'
+  );
 
   // Formats delay into descriptive text: e.g. "H park wind 20 min later"
   const formatDelay = (park: string, k: number) => {
     if (k === 0) return `Park ${park}: synchronous (0 min)`;
-    if (k < 0) return `Park ${park}: ${Math.abs(k) * 10} min later`;
-    return `Park ${park}: ${k * 10} min earlier`;
+    if (k < 0) return `Park ${park} wind ${Math.abs(k) * 10} min later`;
+    return `Park ${park} wind ${k * 10} min earlier`;
   };
+
+  // Backtest metrics per turbine averaged over all test windows
+  const turbineAveragedMetrics = useMemo(() => {
+    const map: Record<
+      string,
+      { windRMSE: number; windMAE: number; powerRMSE: number; powerMAE: number }
+    > = {};
+
+    for (const tName of targetTurbines) {
+      let sumWindRMSE = 0, countWindRMSE = 0;
+      let sumWindMAE = 0, countWindMAE = 0;
+      let sumPowerRMSE = 0, countPowerRMSE = 0;
+      let sumPowerMAE = 0, countPowerMAE = 0;
+
+      for (const w of chosenCombination.windows) {
+        const wt = w.turbines[tName];
+        if (wt) {
+          if (!Number.isNaN(wt.windRMSE)) { sumWindRMSE += wt.windRMSE; countWindRMSE++; }
+          if (!Number.isNaN(wt.windMAE)) { sumWindMAE += wt.windMAE; countWindMAE++; }
+          if (!Number.isNaN(wt.powerRMSE)) { sumPowerRMSE += wt.powerRMSE; countPowerRMSE++; }
+          if (!Number.isNaN(wt.powerMAE)) { sumPowerMAE += wt.powerMAE; countPowerMAE++; }
+        }
+      }
+
+      map[tName] = {
+        windRMSE: countWindRMSE > 0 ? sumWindRMSE / countWindRMSE : NaN,
+        windMAE: countWindMAE > 0 ? sumWindMAE / countWindMAE : NaN,
+        powerRMSE: countPowerRMSE > 0 ? sumPowerRMSE / countPowerRMSE : NaN,
+        powerMAE: countPowerMAE > 0 ? sumPowerMAE / countPowerMAE : NaN,
+      };
+    }
+    return map;
+  }, [chosenCombination.windows, targetTurbines]);
 
   // Backtest energy error bar chart data
   const barChartData = useMemo(() => {
@@ -48,36 +84,11 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
     }));
   }, [chosenCombination]);
 
-  // Scatter plot data: sample predicted vs real wind across backtest windows
-  const scatterData = useMemo(() => {
-    const points: { real: number; pred: number }[] = [];
-    // Sample ~250 points evenly across windows to keep SVG lightweight and crisp
-    const windows = chosenCombination.windows;
-    if (windows.length === 0) return points;
-
-    const tName = report.targetTurbines[0];
-    const tModel = report.turbines[tName]?.model;
-    const sectors = result.screening.directionResult.sectors;
-    if (!tModel) return points;
-
-    for (let wIdx = 0; wIdx < windows.length; wIdx++) {
-      const w = windows[wIdx];
-      const step = Math.max(1, Math.floor((w.endIndex - w.startIndex) / 10));
-
-      for (let t = w.startIndex; t <= w.endIndex; t += step) {
-        const vReal = grid.windSpeed[tName][t];
-        const vHat = predictWind(tModel, t, sectors);
-
-        if (!Number.isNaN(vReal) && !Number.isNaN(vHat)) {
-          points.push({
-            real: Number(vReal.toFixed(2)),
-            pred: Number(vHat.toFixed(2)),
-          });
-        }
-      }
-    }
-    return points.slice(0, 200);
-  }, [chosenCombination, grid, report, result.screening]);
+  // Out-of-sample scatter points for selected turbine
+  const scatterPoints = useMemo(() => {
+    const samples = chosenCombination.scatterSamples?.[selectedScatterTurbine] || [];
+    return samples;
+  }, [chosenCombination.scatterSamples, selectedScatterTurbine]);
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -111,7 +122,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
             <strong>3. Missing Park Imputation:</strong> If a reference park has temporary missing readings during the outage, the model rescales the active reference weights proportionally rather than failing or assuming zero wind.
           </p>
           <p>
-            <strong>4. Gauss-Hermite Power Integration:</strong> Power curves are non-linear (cubic curve). Converting average predicted wind directly to power severely under-estimates production. We integrate expected power E[P] over the residual prediction spread σ using a 21-node Gauss-Hermite quadrature, and sum energy with the exact 1/6 h multiplier.
+            <strong>4. Gauss-Hermite Power Integration:</strong> Power curves are non-linear (cubic curve). Converting the predicted (smooth) wind directly to power systematically underestimates production, because the curve is steepest where most wind speeds lie. We integrate expected power E[P] over the residual prediction spread σ using a 21-node Gauss-Hermite quadrature, and sum energy with the exact 1/6 h multiplier.
           </p>
         </div>
       </div>
@@ -222,22 +233,28 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {turbinesList.map((t) => {
                 const medScore = chosenCombination.turbineMedians[t.turbineName];
+                const metrics = turbineAveragedMetrics[t.turbineName] || {
+                  windRMSE: NaN,
+                  windMAE: NaN,
+                  powerRMSE: NaN,
+                  powerMAE: NaN,
+                };
                 return (
                   <tr key={t.turbineName} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="py-2.5 px-3 font-sans font-bold text-slate-900 dark:text-white">
                       {t.turbineName}
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
-                      {t.model.sigmaGlobal.toFixed(2)} m/s
+                      {!Number.isNaN(metrics.windRMSE) ? `${metrics.windRMSE.toFixed(2)} m/s` : 'N/A'}
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
-                      {(t.model.sigmaGlobal * 0.8).toFixed(2)} m/s
+                      {!Number.isNaN(metrics.windMAE) ? `${metrics.windMAE.toFixed(2)} m/s` : 'N/A'}
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
-                      ~145 kW
+                      {!Number.isNaN(metrics.powerRMSE) ? `${Math.round(metrics.powerRMSE).toLocaleString('en-US')} kW` : 'N/A'}
                     </td>
                     <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300">
-                      ~98 kW
+                      {!Number.isNaN(metrics.powerMAE) ? `${Math.round(metrics.powerMAE).toLocaleString('en-US')} kW` : 'N/A'}
                     </td>
                     <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
                       {medScore !== undefined ? `${medScore.toFixed(2)} %` : 'N/A'}
@@ -261,7 +278,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center space-x-2">
             <BarChart2 className="w-5 h-5 text-blue-600" />
-            <span>Energy Error in % (ΔE%) for Each Test Window</span>
+            <span>Park energy error (ΔE %) in each test window</span>
           </h3>
           <span className="text-xs text-slate-500 font-mono">
             Mean of Median |ΔE%| = {chosenCombination.selectionScore.toFixed(2)} %
@@ -270,7 +287,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
 
         <div className="h-64 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={barChartData} margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
+            <BarChart data={barChartData} margin={{ top: 10, right: 20, left: 15, bottom: 25 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.gridLine} opacity={0.6} />
               <XAxis
                 dataKey="name"
@@ -285,9 +302,10 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                 }}
               />
               <YAxis
+                width={70}
                 tick={{ fontSize: 12, fill: '#475569' }}
                 label={{
-                  value: 'Energy Error ΔE (%)',
+                  value: 'Park ΔE (%)',
                   angle: -90,
                   position: 'insideLeft',
                   offset: 0,
@@ -297,11 +315,11 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                 }}
               />
               <Tooltip
-                formatter={(val: any) => [`${val} %`, 'Energy Error ΔE']}
+                formatter={(val: any) => [`${val} %`, 'Park ΔE (%)']}
                 labelFormatter={(label: any) => `Window ${label}`}
               />
               <ReferenceLine y={0} stroke="#94A3B8" strokeWidth={1.5} />
-              <Bar dataKey="errorPercent" name="Energy Error ΔE (%)">
+              <Bar dataKey="errorPercent" name="Park ΔE (%)">
                 {barChartData.map((entry, idx) => (
                   <Cell
                     key={`cell-${idx}`}
@@ -316,19 +334,39 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
 
       {/* Chart 2: Scatter Plot of Predicted vs Real Wind with 1:1 Line */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center space-x-2">
-            <ScatterIcon className="w-5 h-5 text-indigo-600" />
-            <span>Predicted vs. Real Wind Speed (1:1 Diagonal Verification)</span>
-          </h3>
-          <span className="text-xs text-slate-500">
-            Points clustered tightly around the diagonal confirm unbiased reconstruction
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center space-x-2">
+              <ScatterIcon className="w-5 h-5 text-indigo-600" />
+              <span>Predicted vs. real wind speed (points on the 1:1 line = perfect)</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Out-of-sample: hourly points from the {chosenCombination.windowsCount} test windows ({scatterPoints.length.toLocaleString('en-US')} points)
+            </p>
+          </div>
+
+          {/* Small Turbine Selection Buttons */}
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs text-slate-500 font-medium mr-1">Turbine:</span>
+            {targetTurbines.map((tName) => (
+              <button
+                key={tName}
+                onClick={() => setSelectedScatterTurbine(tName)}
+                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                  selectedScatterTurbine === tName
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                {tName}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="h-72 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
+            <ScatterChart margin={{ top: 10, right: 20, left: 15, bottom: 25 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={COLORS.gridLine} opacity={0.6} />
               <XAxis
                 dataKey="real"
@@ -352,6 +390,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                 unit=" m/s"
                 type="number"
                 domain={[0, 20]}
+                width={70}
                 tick={{ fontSize: 12, fill: '#475569' }}
                 label={{
                   value: 'Predicted Wind Speed (m/s)',
@@ -383,9 +422,10 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
               />
               <Scatter
                 name="Wind Predictions"
-                data={scatterData}
+                data={scatterPoints}
                 fill={COLORS.target}
-                fillOpacity={0.7}
+                fillOpacity={0.35}
+                isAnimationActive={false}
               />
             </ScatterChart>
           </ResponsiveContainer>

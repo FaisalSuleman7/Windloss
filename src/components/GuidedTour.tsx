@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, ChevronRight, ChevronLeft, Sparkles, Database } from 'lucide-react';
 
 export interface TourStep {
@@ -7,48 +8,54 @@ export interface TourStep {
   description: string;
 }
 
-const TOUR_STEPS: TourStep[] = [
+export const TOUR_STEPS: TourStep[] = [
   {
     sidebarStep: 1,
-    title: '1. Start & File Ingestion',
+    title: '1. Start',
     description:
-      'Upload turbine SCADA time-series files (*_data.csv) and target turbine power curves. The engine supports CSV (semicolons, commas) and Excel formats.',
+      'Drop all turbine files (the offline park and its neighbours) plus the power curves of the offline turbines. CSV or Excel; names like T1_data.csv. Or try the BayWa demo.',
+  },
+  {
+    sidebarStep: 2,
+    title: '2. Data',
+    description:
+      'Availability of every turbine, plots of wind, direction, temperature and pressure (switch series on/off), and wind roses per park or per turbine.',
   },
   {
     sidebarStep: 3,
-    title: '2. Automatic Outage Detection',
+    title: '3. Outage',
     description:
-      'The engine automatically detects simultaneous downtime across a park while checking that reference parks remained operating. Boundaries are fully editable.',
+      'The longest block where every turbine of one park is missing while the neighbours keep measuring. You can edit start and end, choose the training data and the air-density option.',
   },
   {
     sidebarStep: 4,
-    title: '3. Turbine Screening & Park Selection',
+    title: '4. References',
     description:
-      'Candidate reference turbines are screened for ≥50% coverage and r ≥ 0.50 correlation. Non-empty park combinations are backtested to pick the best reference.',
+      'Neighbours with enough data and a correlation of at least 0.5 are kept; every combination of neighbour parks is tested on past periods and the most accurate one wins.',
   },
   {
     sidebarStep: 5,
-    title: '4. Mathematical Method & Accuracy',
+    title: '5. Method',
     description:
-      'Calculates wind transit delays (lags), direction sector OLS regressions with Bayesian shrinkage, and cross-validates accuracy on historical windows.',
+      "One small formula per turbine and wind direction, with the neighbours' delays. Accuracy is measured on test periods of the same length where the true values are known.",
   },
   {
     sidebarStep: 6,
-    title: '5. Reconstructed Wind Speeds',
+    title: '6. Predicted wind',
     description:
-      'Interactive 10-minute wind speed time series during the outage for each target turbine, with interactive toggles to compare against neighboring parks.',
+      'The predicted 10-minute wind of each offline turbine during the whole outage, next to the measured wind of the neighbour parks.',
   },
   {
     sidebarStep: 7,
-    title: '6. Lost Energy & 80% Uncertainty Range',
+    title: '7. Energy loss',
     description:
-      'Applies 21-node Gauss-Hermite integration to compute expected power (accounting for prediction spread σ) and exact 1/6h energy integration.',
+      'Lost kWh per turbine and for the park, with an 80 % range taken from the measured test errors, and the result with and without air density.',
   },
   {
     sidebarStep: 8,
-    title: '7. Ready-to-File Insurance Claim',
+    title: '8. E-mail & downloads',
     description:
-      'Generates a formal business-interruption claim email formatted with all calculated figures, 80% error ranges, and air density sensitivity notes.',
+      'A ready-to-send e-mail for the insurer, CSV files of the predictions and a printable audit report — all filled from the numbers above.',
   },
 ];
 
@@ -72,84 +79,104 @@ export const GuidedTour: React.FC<GuidedTourProps> = ({
   const step = TOUR_STEPS[currentStepIndex];
   if (!step) return null;
 
+  const progressPercent = ((currentStepIndex + 1) / TOUR_STEPS.length) * 100;
+
   return (
-    <div className="fixed inset-0 z-50 pointer-events-none flex items-end sm:items-center justify-center p-4">
-      {/* Semi-transparent backdrop with click to skip */}
-      <div
-        onClick={onSkip}
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] pointer-events-auto transition-opacity"
-      />
-
-      {/* Floating Tooltip Card */}
-      <div className="relative pointer-events-auto bg-white dark:bg-slate-900 border-2 border-blue-600 dark:border-blue-500 rounded-2xl shadow-2xl p-6 max-w-lg w-full space-y-4 animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400 font-semibold text-xs tracking-wider uppercase">
-            <Sparkles className="w-4 h-4" />
-            <span>Guided Tour &bull; Step {currentStepIndex + 1} of {TOUR_STEPS.length}</span>
+    // Docked bottom-right: fixed bottom-4 right-4, no backdrop, no blur overlay
+    <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] sm:w-[420px] max-w-[420px] pointer-events-auto">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={currentStepIndex}
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 24 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+          className="relative overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-2 border-blue-600 dark:border-blue-500 rounded-2xl shadow-2xl p-5 space-y-3.5"
+        >
+          {/* Thin progress bar across top */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-slate-100 dark:bg-slate-800">
+            <motion.div
+              className="h-full bg-blue-600 dark:bg-blue-500"
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercent}%` }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+            />
           </div>
-          <button
-            onClick={onSkip}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md"
-            title="Skip Tour"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
 
-        <div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            {step.title}
-          </h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 leading-relaxed">
-            {step.description}
-          </p>
-        </div>
-
-        {!hasData && currentStepIndex === 0 && onLoadDemo && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-900/60 flex items-center justify-between">
-            <span className="text-xs text-blue-800 dark:text-blue-300 font-medium">
-              Load demo data now to see real calculations throughout the tour:
-            </span>
+          {/* Header */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center space-x-1.5 text-blue-600 dark:text-blue-400 font-bold text-xs tracking-wider uppercase">
+              <Sparkles className="w-4 h-4" />
+              <span>
+                Guided Tour &bull; Step {currentStepIndex + 1} of {TOUR_STEPS.length}
+              </span>
+            </div>
             <button
-              onClick={onLoadDemo}
-              className="ml-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shrink-0 cursor-pointer shadow-xs"
+              onClick={onSkip}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-md cursor-pointer transition-colors"
+              title="Close Tour"
             >
-              <Database className="w-3.5 h-3.5" />
-              <span>Load Demo Data</span>
+              <X className="w-4 h-4" />
             </button>
           </div>
-        )}
 
-        <div className="flex items-center justify-between pt-2">
-          <button
-            onClick={onSkip}
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
-          >
-            Skip Tour
-          </button>
+          {/* Title & Body */}
+          <div className="space-y-1.5">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white leading-snug">
+              {step.title}
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              {step.description}
+            </p>
+          </div>
 
-          <div className="flex items-center space-x-2">
-            {currentStepIndex > 0 && (
+          {/* Load demo prompt if on step 1 without data */}
+          {!hasData && currentStepIndex === 0 && onLoadDemo && (
+            <div className="p-3 bg-blue-50/90 dark:bg-blue-950/60 rounded-xl border border-blue-200/80 dark:border-blue-900/80 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-blue-900 dark:text-blue-200 font-medium leading-tight">
+                Load demo data now to see real calculations throughout the tour:
+              </span>
               <button
-                onClick={onPrev}
-                className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg flex items-center space-x-1 cursor-pointer"
+                onClick={onLoadDemo}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1 shrink-0 cursor-pointer shadow-xs transition-colors"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
+                <Database className="w-3.5 h-3.5" />
+                <span>Load Demo Data</span>
               </button>
-            )}
+            </div>
+          )}
 
+          {/* Footer Controls */}
+          <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
             <button
-              onClick={onNext}
-              className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center space-x-1 cursor-pointer shadow-sm"
+              onClick={onSkip}
+              className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer transition-colors"
             >
-              <span>{currentStepIndex === TOUR_STEPS.length - 1 ? 'Finish Tour' : 'Next'}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+              Skip Tour
             </button>
+
+            <div className="flex items-center space-x-2">
+              {currentStepIndex > 0 && (
+                <button
+                  onClick={onPrev}
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+              )}
+
+              <button
+                onClick={onNext}
+                className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center space-x-1 cursor-pointer shadow-sm transition-colors"
+              >
+                <span>{currentStepIndex === TOUR_STEPS.length - 1 ? 'Finish Tour' : 'Next'}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 };
-export { TOUR_STEPS };

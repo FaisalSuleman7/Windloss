@@ -1,29 +1,39 @@
 @import "tailwindcss";
 
+.print-only { display: none; }
+@page { size: A4; margin: 12mm; }
 @media print {
-  header,
-  aside,
-  footer,
-  button,
-  .no-print {
-    display: none !important;
-  }
+  #root { display: none !important; }
+  .print-only { display: block !important; }
+  html, body { background: #fff !important; }
+  .break-inside-avoid { break-inside: avoid; }
+}
 
-  body {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-  }
+/* Guided tour active step highlight outline */
+.tour-highlight {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 6px !important;
+  border-radius: 18px !important;
+}
 
-  main {
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
+/* Drifting wind lines for HeroIllustration */
+@keyframes windDrift {
+  0% {
+    stroke-dashoffset: 0;
   }
-
-  .printable-report {
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
+  100% {
+    stroke-dashoffset: -200;
   }
 }
+
+.wind-line {
+  stroke-dasharray: 40 160;
+  animation: windDrift 4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wind-line {
+    animation: none !important;
+  }
+}
+

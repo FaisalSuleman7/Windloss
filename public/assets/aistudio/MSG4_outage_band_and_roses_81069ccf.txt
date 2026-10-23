@@ -1,0 +1,25 @@
+Please make these small fixes. Do NOT change the calculation engine, the Self-test or any number. Only the Data page (Step 2) and one axis label.
+
+FIX 1 - Pink outage band in "Look at the data (hourly means)" is wrong.
+Problem: the band starts at the first data point (2026-07-01) and ends near 2026-09-04, but its caption says 2026-09-01 00:00 to 2026-09-03 23:50. The Availability strip above is correct. The band must use exactly the same outage as the rest of the app and move when the user edits the outage on Step 3.
+How to fix:
+- Give every hourly point a number: idx = floor(gridIndex / 6) (gridIndex = position in the 10-minute grid).
+- XAxis: dataKey="idx", type="number", domain={["dataMin","dataMax"]}, tickFormatter = idx -> the date/time of that hour (same format as now).
+- ReferenceArea: x1 = floor(outage.startIndex / 6), x2 = floor(outage.endIndex / 6), ifOverflow="extendDomain", same pink #CC79A7 with opacity 0.18.
+- Band label: "Outage (" + outage.durationHours.toFixed(1) + " h)"; caption below uses outage.start and outage.end.
+- Both values must come from the current outage state (after "Apply & Re-estimate Outage"), never from constants.
+Check: with the demo the band covers only 1-3 Sep; if I change the start on Step 3 to 2026-09-01 06:00 and apply, the band and label move/shrink (66.0 h).
+
+FIX 2 - Wind roses in park colours.
+Colour the speed bins with shades of the park colour (light = slow, dark = fast), so the park colour code is the same everywhere:
+- Park H (orange #E69F00): #FBE3B0, #F5C766, #E69F00, #B37A00, #6B4900
+- Park O (green #009E73): #B8E6D6, #66C7A8, #009E73, #00704F, #00402D
+- Park T (blue #0072B2): #BBD9EE, #6FB0DB, #0072B2, #00507D, #002E48
+For any other park use the colour given by makeParkColors and make the 5 shades by mixing it with white (70 %, 40 %, 0 %) and with black (30 %, 60 %).
+- Same in "Per turbine" view: each turbine uses its park's shades.
+- Legend: replace the blue bins with one neutral grey ramp and the text "0-3, 3-6, 6-9, 9-12, >=12 m/s - darker = faster".
+- Keep the same 20 % outer ring for all roses and the average-direction dashed line in the park colour.
+
+FIX 3 - Step 7 bar chart: the y-axis label is cut off ("Lost energy (kW"). Make the left margin wider so it reads "Lost energy (kWh)".
+
+Do not change anything else.

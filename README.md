@@ -116,3 +116,27 @@ Includes interactive tests for all three robustness scenarios:
 - **(a)** Missing wind direction columns (falls back cleanly to single sector)
 - **(b)** Manual $+6\text{ h}$ outage shift
 - **(c)** European format (semicolon, decimal comma, German dates) with renamed parks A, B, C
+
+---
+
+## Features (Update 2 of 3)
+
+### 1. Site Air-Density Option (Bonus Parameters)
+- Reconstructs site air density $\rho(t)$ during the outage using barometric pressure and temperature from neighbouring reference parks with barometric altitude offset compensation $\Delta p$.
+- Interactive `DensityToggle` component in Step 3 and Step 7 allowing users to toggle between **Standard air density (1.225 kg/m³)** and **Site air density (corrected)**.
+- Headline numbers across Energy Loss (Step 7), Claim E-mail (Step 8), and Exports/Audit Report (Step 9) dynamically switch between standard (317,354 kWh) and corrected (311,035 kWh, $-2.0\%$).
+- Pure view adapter (`src/utils/view.ts`) ensures the underlying engine calculation remains immutable and unit tests stay green.
+
+### 2. Pre-Model Data Exploration (Step 2)
+- **Hourly Means Explorer**: Interactive time-series visualizer across Wind speed (m/s), Wind direction (°), Temperature (°C), and Air pressure (hPa) with outage shading (#CC79A7), park-grouped turbine chips, and circular direction averaging.
+- **16-Sector Wind Roses**: Custom SVG compass roses partitioned into 22.5° sectors and stacked by 5 speed bins (0–3, 3–6, 6–9, 9–12, $\ge 12\text{ m/s}$), scaled to a common maximum rounded up to multiples of 4%, with circular average direction dashed vectors (revealing T3's offset vane at 221°).
+
+### 3. Step 9 Comprehensive Exports & A4 Audit Report
+- **4 Export Options**:
+  1. *Predictions (outage, per turbine)*: 1,296 rows (432 stamps $\times$ 3 turbines) with timestamp, turbine, wind speed, power.
+  2. *Predictions (outage, wide + park total)*: 432 rows aligning all turbines with total park power.
+  3. *Full period (measured + reconstructed)*: all 13,248 grid rows for each turbine with `in_outage` indicator.
+  4. *Summary (per turbine + park)*: turbine lost kWh, mean wind, 80% error bounds, and `power_curve_basis`.
+  - Filenames automatically append `_site-density` when site-density mode is active.
+- **Formal Print Audit Report**: Optimized for A4 / Letter PDF export via browser print (`window.print()`), with 4 executive KPI cards, per-turbine results, a 720×230 reconstructed wind plot, model parameters and combination scores, measured accuracy metrics, and claim email formulation with `break-inside-avoid` page formatting.
+

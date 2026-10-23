@@ -41,6 +41,7 @@ export interface ParkCombinationResult {
   turbineMedians: Record<string, number>; // median |ΔE%| per turbine
   turbineDeltaEArrays: Record<string, number[]>; // array of ΔE% over all windows
   parkDeltaEArray: number[]; // array of park ΔE% over all windows
+  scatterSamples?: Record<string, { real: number; pred: number }[]>;
 }
 
 /**
@@ -109,11 +110,13 @@ export function runBacktestForCombination(
   const windows: WindowResult[] = [];
   const turbineWindRMSELists: Record<string, number[]> = {};
   const turbineDeltaEArrays: Record<string, number[]> = {};
+  const scatterSamples: Record<string, { real: number; pred: number }[]> = {};
   const parkDeltaEArray: number[] = [];
 
   for (const tName of targetTurbines) {
     turbineWindRMSELists[tName] = [];
     turbineDeltaEArrays[tName] = [];
+    scatterSamples[tName] = [];
   }
 
   let wStart = firstKnownIdx;
@@ -192,6 +195,7 @@ export function runBacktestForCombination(
 
         if (!Number.isNaN(vReal) && !Number.isNaN(vHat)) {
           const eWind = vReal - vHat;
+          if (tau % 6 === 0) scatterSamples[tName].push({ real: vReal, pred: vHat });
           sumSqWind += eWind * eWind;
           sumAbsWind += Math.abs(eWind);
           countWind++;
@@ -289,6 +293,7 @@ export function runBacktestForCombination(
     turbineMedians,
     turbineDeltaEArrays,
     parkDeltaEArray,
+    scatterSamples,
   };
 }
 

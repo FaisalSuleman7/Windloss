@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw,
   AlertCircle,
@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ArrowLeft,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { useLossCalculation } from './hooks/useLossCalculation';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
@@ -31,7 +32,8 @@ import { Step7EnergyLoss } from './components/steps/Step7EnergyLoss';
 import { Step8Email } from './components/steps/Step8Email';
 import { Step9Downloads } from './components/steps/Step9Downloads';
 
-import { TrainingDataOption, CalculationOptions } from './engine';
+import { TrainingDataOption, CalculationOptions, EngineResult } from './engine';
+import { applyDensityView } from './utils/view';
 
 export default function App() {
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -40,10 +42,14 @@ export default function App() {
   const [showDemoDropModal, setShowDemoDropModal] = useState<boolean>(false);
   const [cachedRawFiles, setCachedRawFiles] = useState<{ name: string; content: string | ArrayBuffer }[]>([]);
   const [trainingOption, setTrainingOption] = useState<TrainingDataOption>('all_measured');
+  const [useDensity, setUseDensity] = useState<boolean>(false);
 
   // Guided tour state
   const [isTourActive, setIsTourActive] = useState<boolean>(false);
   const [tourStepIndex, setTourStepIndex] = useState<number>(0);
+
+  const lastResultRef = useRef<EngineResult | null>(null);
+  const advanceOnNextResult = useRef<boolean>(false);
 
   const {
     isCalculating,
@@ -53,6 +59,9 @@ export default function App() {
     calculate,
     setError,
   } = useLossCalculation();
+
+  // Active view with density adjustments applied when useDensity is true
+  const view = React.useMemo(() => applyDensityView(result, useDensity), [result, useDensity]);
 
   // Completed steps tracking
   const completedSteps = React.useMemo(() => {
@@ -77,15 +86,21 @@ export default function App() {
     }
   }, []);
 
-  // Automatically advance to Step 2 (Data) when calculation produces results
+  // Move to Step 2 only ONCE, when a NEW result arrives from a calculation started on Start page
   useEffect(() => {
-    if (result && activeStep === 1) {
-      setActiveStep(2);
+    if (result !== lastResultRef.current) {
+      lastResultRef.current = result;
+      if (advanceOnNextResult.current && activeStep === 1 && !isTourActive) {
+        setActiveStep(2);
+      }
+      advanceOnNextResult.current = false;
     }
-  }, [result, activeStep]);
+  }, [result, activeStep, isTourActive]);
 
   const handleFilesReady = (files: { name: string; content: string | ArrayBuffer }[]) => {
     setCachedRawFiles(files);
+    setUseDensity(false);
+    advanceOnNextResult.current = true;
     // Check if these are demo files
     const fileNames = files.map((f) => f.name.toLowerCase());
     const isBayWaDemo =
@@ -100,6 +115,7 @@ export default function App() {
 
   // Demo Data loader: check /demo/manifest.json, otherwise open drop zone modal
   const handleLoadDemoData = useCallback(async () => {
+    setUseDensity(false);
     try {
       const response = await fetch('/demo/manifest.json');
       if (response.ok) {
@@ -116,6 +132,7 @@ export default function App() {
         if (fetchedFiles.length > 0) {
           setIsDemoActive(true);
           setCachedRawFiles(fetchedFiles);
+          advanceOnNextResult.current = true;
           calculate(fetchedFiles, { trainingOption });
           return;
         }
@@ -254,8 +271,14 @@ export default function App() {
               <SelfTestView />
             </div>
           ) : (
-            /* Render 9 Steps */
-            <div>
+            /* Render 9 Steps with page transition */
+            <motion.div
+              key={activeStep}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className={isTourActive ? 'tour-highlight' : undefined}
+            >
               {activeStep === 1 && (
                 <Step1Start
                   result={result}
@@ -281,6 +304,8 @@ export default function App() {
                     result={result}
                     onUpdateOptions={handleUpdateOptions}
                     isCalculating={isCalculating}
+                    useDensity={useDensity}
+                    onToggleDensity={setUseDensity}
                   />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
@@ -309,7 +334,7 @@ export default function App() {
 
               {activeStep === 6 && (
                 result ? (
-                  <Step6PredictedWind result={result} />
+                  <Step6PredictedWind result={view || result} />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
                 )
@@ -317,7 +342,11 @@ export default function App() {
 
               {activeStep === 7 && (
                 result ? (
-                  <Step7EnergyLoss result={result} />
+                  <Step7EnergyLoss
+                    result={view || result}
+                    useDensity={useDensity}
+                    onToggleDensity={setUseDensity}
+                  />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
                 )
@@ -325,7 +354,7 @@ export default function App() {
 
               {activeStep === 8 && (
                 result ? (
-                  <Step8Email result={result} />
+                  <Step8Email result={view || result} />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
                 )
@@ -333,12 +362,12 @@ export default function App() {
 
               {activeStep === 9 && (
                 result ? (
-                  <Step9Downloads result={result} />
+                  <Step9Downloads result={view || result} />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
                 )
               )}
-            </div>
+            </motion.div>
           )}
         </main>
       </div>

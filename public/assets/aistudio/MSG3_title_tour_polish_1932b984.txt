@@ -1,0 +1,48 @@
+UPDATE 3 of 3 — TITLE PAGE, GUIDED TOUR, POLISH. Keep the existing style, colours and animations. No engine changes.
+
+A) TITLE ILLUSTRATION at the top of the Start page card (new component HeroIllustration, inline SVG, viewBox 0 0 900 300, w-full, rounded-2xl, sky gradient from-sky-50 to-white):
+   - Three drifting wind lines (light blue #93C5FD, CSS stroke-dasharray 40 160 animated with stroke-dashoffset 0 → −200 over 4 s, infinite, staggered delays) and two soft hills at the bottom (pale blue, pale green).
+   - Eight turbines drawn with this component (tapered tower, nacelle, 3 blades rotating about the hub — SVG animateTransform so the pivot is exact):
+     const Turbine = ({x, base, h, color, spin, dur, phase = 0}) => { const hubY = base - h; const L = h * 0.52;
+       const blade = `M0,0 C ${L*0.07},${-L*0.3} ${L*0.05},${-L*0.82} 0,${-L} C ${-L*0.035},${-L*0.8} ${-L*0.06},${-L*0.3} 0,0 Z`;
+       return (<g>
+         <polygon points={`${x-h*0.028},${base} ${x+h*0.028},${base} ${x+h*0.012},${hubY} ${x-h*0.012},${hubY}`} fill="#E2E8F0" stroke="#CBD5E1" strokeWidth="0.6"/>
+         <rect x={x-h*0.02} y={hubY-h*0.03} width={h*0.09} height={h*0.055} rx={h*0.02} fill="#F1F5F9" stroke="#CBD5E1" strokeWidth="0.6"/>
+         <g transform={`translate(${x},${hubY})`}><g transform={`rotate(${phase})`}>
+           {spin && <animateTransform attributeName="transform" type="rotate" from={`${phase}`} to={`${phase+360}`} dur={`${dur}s`} repeatCount="indefinite"/>}
+           {[0,120,240].map(a => <path key={a} d={blade} transform={`rotate(${a})`} fill="#FFFFFF" stroke={color} strokeWidth="1.1"/>)}
+         </g><circle r={h*0.028} fill={color}/></g></g>); };
+     Neighbour park H (left, spinning, #E69F00): (x 70, base 248, h 118, dur 3.4), (150, 244, 102, 3.0, phase 40), (222, 246, 110, 3.7, phase 80).
+     Target park (centre, NOT spinning, #0072B2): (395, 240, 128, phase 15), (470, 238, 114, phase 60), (540, 240, 122, phase 100).
+     Neighbour park O (right, spinning, #009E73): (720, 242, 108, 3.2, phase 20), (800, 246, 118, 3.6, phase 70).
+   - Pill labels at y 266 (height 26, rx 13): "Neighbour park H" (x 66, w 160, #FFF7E6 / #E69F00), "Target park (offline)" (x 381, w 176, #EAF3FB / #0072B2), "Neighbour park O" (x 680, w 160, #E6F6F1 / #009E73); bold 13 px text centred.
+   - A pulsing badge "no data · offline" (x 410, y 10, w 120, h 26, #FCE7F3 / #CC79A7, text #9D174D) — animate opacity 0.6 → 1 → 0.6 every 2.4 s with motion/react.
+   - Two dashed navy arrows from the neighbour parks to the target park (paths "M245,150 C 290,122 330,122 365,138" and "M690,150 C 645,122 605,122 572,138", arrow markers) with the labels "rebuild its wind" (x 305, y 116) and "from the neighbours" (x 632, y 116).
+   - Respect prefers-reduced-motion (no wind-line animation).
+   Below the illustration three small cards (hover: lift 3 px with motion whileHover y −3):
+   1. "Betz limit" — "No rotor can capture more than 16/27 ≈ 59.3 % of the wind's power." + a bar that animates from 0 to 59.3 % (labels 0 %, 59.3 %, 100 %).
+   2. "Power grows with v³" — "Below rated power P = ½ ρ A v³: 10 % more wind gives about 33 % more power (1.1³ = 1.33), so the wind must be rebuilt carefully."
+   3. "Insurance claim" — "Business-interruption insurance pays for the energy that could not be produced. The tool gives the kWh, an honest range and the e-mail."
+   Heading text: "Reconstruct the energy a wind park lost during an outage."
+
+B) START PAGE 3-STEP FLOW: the boxes break into two rows because the arrows are grid items in a 3-column grid. Use md:grid-cols-[1fr_auto_1fr_auto_1fr] so Step 1 → Step 2 → Step 3 are in one row.
+
+C) GUIDED TOUR — the page behind is blurred and dark, so the user cannot see what is explained. Change to:
+   - No backdrop, no blur. The card is docked at the bottom-right (fixed bottom-4 right-4, width 420 px; full width on mobile), white/95, border-2 blue, shadow-2xl; it slides in (motion: opacity 0 → 1, y 24 → 0, 0.3 s) on every step change; a thin progress bar (step / total).
+   - The page being explained gets a blue outline: wrap the step content with class tour-highlight while the tour is active (.tour-highlight { outline: 3px solid #2563eb; outline-offset: 6px; border-radius: 18px; }).
+   - 8 steps, plain language:
+     1 Start: "Drop all turbine files (the offline park and its neighbours) plus the power curves of the offline turbines. CSV or Excel; names like T1_data.csv. Or try the BayWa demo."
+     2 Data: "Availability of every turbine, plots of wind, direction, temperature and pressure (switch series on/off), and wind roses per park or per turbine."
+     3 Outage: "The longest block where every turbine of one park is missing while the neighbours keep measuring. You can edit start and end, choose the training data and the air-density option."
+     4 References: "Neighbours with enough data and a correlation of at least 0.5 are kept; every combination of neighbour parks is tested on past periods and the most accurate one wins."
+     5 Method: "One small formula per turbine and wind direction, with the neighbours' delays. Accuracy is measured on test periods of the same length where the true values are known."
+     6 Predicted wind: "The predicted 10-minute wind of each offline turbine during the whole outage, next to the measured wind of the neighbour parks."
+     7 Energy loss: "Lost kWh per turbine and for the park, with an 80 % range taken from the measured test errors, and the result with and without air density."
+     8 E-mail & downloads (sidebar step 8): "A ready-to-send e-mail for the insurer, CSV files of the predictions and a printable audit report — all filled from the numbers above."
+   - Step 1 keeps the "Load Demo Data" button when no data is loaded.
+
+D) PAGE TRANSITIONS: wrap the active step's content in motion.div keyed by activeStep (opacity 0 → 1, y 10 → 0, 0.25 s, easeOut).
+
+E) The "animate-in / fade-in / zoom-in" Tailwind classes have no effect (the plugin is not installed) — replace them with motion/react where an animation is wanted, or remove them.
+
+CHECK AFTER THIS UPDATE: rotors of parks H and O spin, the target park's rotors stand still, no blade leaves the picture; the three flow boxes are in one row; the tour card sits bottom-right and the page behind is sharp; Self-test still all green.

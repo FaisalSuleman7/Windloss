@@ -19,7 +19,7 @@ export function downloadFile(content: string, fileName: string, contentType: str
 }
 
 /**
- * Generates predictions CSV:
+ * 1. Generates predictions CSV (per turbine):
  * timestamp,turbine,wind_speed_pred,power_pred_kw
  */
 export function generatePredictionsCSV(result: EngineResult): string {
@@ -46,12 +46,97 @@ export function generatePredictionsCSV(result: EngineResult): string {
 }
 
 /**
- * Generates summary CSV:
- * turbine,mean_wind_ms,lost_kwh,range_low_kwh,range_high_kwh
+ * 2. Generates wide predictions CSV + park total:
+ * timestamp,{T}_wind_speed_pred,{T}_power_pred_kw...,park_power_pred_kw
+ */
+export function generatePredictionsWideCSV(result: EngineResult): string {
+  const { report } = result;
+  const targets = report.targetTurbines;
+
+  const headerParts = ['timestamp'];
+  for (const t of targets) {
+    headerParts.push(`${t}_wind_speed_pred`, `${t}_power_pred_kw`);
+  }
+  headerParts.push('park_power_pred_kw');
+
+  const rows: string[] = [headerParts.join(',')];
+
+  for (let i = 0; i < report.outageDates.length; i++) {
+    const ts = report.outageDates[i];
+    const rowParts: string[] = [`"${ts}"`];
+    let sumParkPower = 0;
+
+    for (const t of targets) {
+      const est = report.turbines[t];
+      const ws = est ? est.predictedWindOutage[i] : NaN;
+      const p = est ? est.expectedPowerOutage[i] : NaN;
+
+      rowParts.push(Number.isNaN(ws) ? '' : ws.toFixed(4));
+      rowParts.push(Number.isNaN(p) ? '' : p.toFixed(2));
+
+      if (!Number.isNaN(p)) {
+        sumParkPower += p;
+      }
+    }
+
+    rowParts.push(sumParkPower.toFixed(2));
+    rows.push(rowParts.join(','));
+  }
+
+  return rows.join('\n');
+}
+
+/**
+ * 3. Generates full period CSV (measured + reconstructed across all grid stamps):
+ * timestamp,turbine,wind_speed_measured,wind_speed_pred,power_pred_kw,in_outage
+ */
+export function generateFullPeriodCSV(result: EngineResult): string {
+  const { grid, outage, report } = result;
+  const rows: string[] = [
+    'timestamp,turbine,wind_speed_measured,wind_speed_pred,power_pred_kw,in_outage',
+  ];
+
+  for (const tName of report.targetTurbines) {
+    const est = report.turbines[tName];
+    const measuredSeries = grid.windSpeed[tName];
+
+    for (let i = 0; i < grid.nRows; i++) {
+      const ts = grid.dateStrings[i];
+      const measured = measuredSeries ? measuredSeries[i] : NaN;
+      const inOutage = i >= outage.startIndex && i <= outage.endIndex ? 1 : 0;
+
+      let predWind = '';
+      let predPower = '';
+
+      if (inOutage === 1 && est) {
+        const outageOffset = i - outage.startIndex;
+        const ws = est.predictedWindOutage[outageOffset];
+        const p = est.expectedPowerOutage[outageOffset];
+        predWind = !Number.isNaN(ws) ? ws.toFixed(4) : '';
+        predPower = !Number.isNaN(p) ? p.toFixed(2) : '';
+      }
+
+      rows.push(
+        `"${ts}",${tName},${!Number.isNaN(measured) ? measured.toFixed(4) : ''},${predWind},${predPower},${inOutage}`
+      );
+    }
+  }
+
+  return rows.join('\n');
+}
+
+/**
+ * 4. Generates summary CSV:
+ * turbine,mean_wind_ms,lost_kwh,range_low_kwh,range_high_kwh,power_curve_basis
  */
 export function generateSummaryCSV(result: EngineResult): string {
   const { report } = result;
-  const rows: string[] = ['turbine,mean_wind_ms,lost_kwh,range_low_kwh,range_high_kwh'];
+  const isDensityApplied = (result as any).densityApplied === true;
+  const powerCurveBasis = isDensityApplied ? 'site_air_density' : 'standard_air_density';
+
+  const rows: string[] = [
+    'turbine,mean_wind_ms,lost_kwh,range_low_kwh,range_high_kwh,power_curve_basis',
+  ];
 
   for (const tName of report.targetTurbines) {
     const est = report.turbines[tName];
@@ -70,7 +155,7 @@ export function generateSummaryCSV(result: EngineResult): string {
     rows.push(
       `${tName},${meanWind},${Math.round(est.energyKWh)},${Math.round(
         est.range80LowerKWh
-      )},${Math.round(est.range80UpperKWh)}`
+      )},${Math.round(est.range80UpperKWh)},${powerCurveBasis}`
     );
   }
 
@@ -78,7 +163,7 @@ export function generateSummaryCSV(result: EngineResult): string {
   rows.push(
     `Park_${report.targetPark},,${Math.round(report.parkEnergyKWh)},${Math.round(
       report.parkRange80LowerKWh
-    )},${Math.round(report.parkRange80UpperKWh)}`
+    )},${Math.round(report.parkRange80UpperKWh)},${powerCurveBasis}`
   );
 
   return rows.join('\n');
@@ -86,9 +171,15 @@ export function generateSummaryCSV(result: EngineResult): string {
 
 /**
  * Generates the business-interruption insurance email content based on the exact template.
+ * Supports 3 cases for air density:
+ * 1. Site density applied
+ * 2. Standard density with site density sensitivity calculated
+ * 3. Density not applicable / no varying pressure data
  */
 export function generateClaimEmail(result: EngineResult): string {
   const { report, outage, chosenCombination } = result;
+  const isDensityApplied = (result as any).densityApplied === true;
+  const baseResult = (result as any).base as EngineResult | undefined;
 
   const targetList = report.targetTurbines.join(', ');
   const parkKWh = Math.round(report.parkEnergyKWh).toLocaleString('en-US');
@@ -106,10 +197,23 @@ export function generateClaimEmail(result: EngineResult): string {
   const parksStr = report.chosenParks.join(' and ');
   const numWindows = chosenCombination.windowsCount;
 
-  const sensitivityStr =
-    report.airDensity.isApplicable && report.airDensity.sensitivityPercent !== undefined
-      ? report.airDensity.sensitivityPercent.toFixed(2)
-      : '0.00';
+  let densitySentence: string;
+  if (isDensityApplied && report.airDensity.isApplicable) {
+    const ref = report.airDensity.referenceParkUsed || 'reference';
+    const rho = (report.airDensity.meanRhoOutage ?? 1.225).toFixed(3);
+    const standardVal = Math.round(
+      baseResult?.report?.parkEnergyKWh ?? report.parkEnergyKWh
+    ).toLocaleString('en-US');
+    densitySentence = `Air density: the estimate takes the site air density into account (temperature and pressure of park ${ref}, mean ${rho} kg/m³). With the standard power curve (1.225 kg/m³) it would be ${standardVal} kWh.`;
+  } else if (report.airDensity.isApplicable && report.airDensity.sensitivityPercent !== undefined) {
+    const refPark = report.airDensity.referenceParkUsed || '';
+    const pct = report.airDensity.sensitivityPercent.toFixed(2);
+    const corrected = Math.round(report.airDensity.correctedParkEnergyKWh || 0).toLocaleString('en-US');
+    densitySentence = `Sensitivity: taking air density into account (temperature and pressure of park ${refPark}) would change the estimate by ${pct} % (to ${corrected} kWh).`;
+  } else {
+    densitySentence =
+      'Air density: not included, because no varying air-pressure measurements were available in the reference data.';
+  }
 
   return `Subject: Business-interruption claim - wind park ${report.targetPark} - outage ${outage.startDateStr} to ${outage.endDateStr} - estimated lost energy
 
@@ -121,7 +225,7 @@ Method: the wind at each turbine was reconstructed every 10 minutes from the nei
 
 Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors.
 
-Sensitivity: taking air density into account would change the estimate by ${sensitivityStr} %.
+${densitySentence}
 
 Kind regards`;
 }

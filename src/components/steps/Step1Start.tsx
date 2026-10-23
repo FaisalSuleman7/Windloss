@@ -11,8 +11,10 @@ import {
   X,
   FolderOpen,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { UploadZone } from '../UploadZone';
 import { EngineResult } from '../../engine';
+import { HeroIllustration } from '../HeroIllustration';
 
 interface Step1StartProps {
   result: EngineResult | null;
@@ -89,24 +91,29 @@ export const Step1Start: React.FC<Step1StartProps> = ({
         className="hidden"
       />
 
-      {/* Non-expert Hero Statement */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm space-y-4">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Wind Park Business-Interruption Engine</span>
+      {/* Main Start Card */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+        {/* Title Illustration & Physics Cards */}
+        <HeroIllustration />
+
+        <div className="space-y-2 pt-2">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Wind Park Business-Interruption Engine</span>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Reconstruct the energy a wind park lost during an outage.
+          </h2>
+
+          <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
+            When a wind park is offline, its own wind sensors are offline too. We rebuild its wind from
+            neighbouring parks and convert it to lost energy.
+          </p>
         </div>
 
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Reconstruct lost wind energy with mathematical certainty.
-        </h2>
-
-        <p className="text-base sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-          When a wind park is offline, its own wind sensors are offline too. We rebuild its wind from
-          neighbouring parks and convert it to lost energy.
-        </p>
-
-        {/* 3-Box Flow */}
-        <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+        {/* 3-Box Flow strictly single-row on desktop: md:grid-cols-[1fr_auto_1fr_auto_1fr] */}
+        <div className="pt-2 grid grid-cols-1 md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-3 items-center">
           {/* Box 1 */}
           <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-col justify-between h-28">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Step 1</span>
@@ -117,8 +124,8 @@ export const Step1Start: React.FC<Step1StartProps> = ({
             <span className="text-xs text-slate-500">Intact reference park measurements</span>
           </div>
 
-          <div className="hidden md:flex justify-center text-slate-400">
-            <ArrowRight className="w-6 h-6" />
+          <div className="hidden md:flex justify-center text-slate-400 px-1">
+            <ArrowRight className="w-5 h-5" />
           </div>
 
           {/* Box 2 */}
@@ -131,8 +138,8 @@ export const Step1Start: React.FC<Step1StartProps> = ({
             <span className="text-xs text-slate-500">Delay sync & direction OLS regression</span>
           </div>
 
-          <div className="hidden md:flex justify-center text-slate-400">
-            <ArrowRight className="w-6 h-6" />
+          <div className="hidden md:flex justify-center text-slate-400 px-1">
+            <ArrowRight className="w-5 h-5" />
           </div>
 
           {/* Box 3 */}
@@ -260,8 +267,13 @@ export const Step1Start: React.FC<Step1StartProps> = ({
 
       {/* Upload Modal Dialog */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 max-w-xl w-full space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.15 }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 max-w-xl w-full space-y-4"
+          >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center space-x-2 text-slate-900 dark:text-white font-bold text-base">
                 <Upload className="w-5 h-5 text-blue-600" />
@@ -297,7 +309,7 @@ export const Step1Start: React.FC<Step1StartProps> = ({
                 Close
               </button>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
     </div>

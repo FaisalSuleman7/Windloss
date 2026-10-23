@@ -23,6 +23,10 @@ export interface TurbineFinalEstimate {
   d90: number;
   range80LowerKWh: number;
   range80UpperKWh: number;
+  densityPowerOutage?: Float64Array;
+  densityEnergyKWh?: number;
+  densityRange80LowerKWh?: number;
+  densityRange80UpperKWh?: number;
 }
 
 export interface AirDensityResult {
@@ -33,6 +37,9 @@ export interface AirDensityResult {
   correctedParkEnergyKWh?: number;
   sensitivityPercent?: number; // 100 * (E_corrected / E - 1)
   reason?: string;
+  rhoOutage?: Float64Array;
+  correctedParkRange80LowerKWh?: number;
+  correctedParkRange80UpperKWh?: number;
 }
 
 export interface FinalReport {
@@ -291,6 +298,7 @@ export function generateFinalReport(
       for (const tName of targetTurbines) {
         const est = turbineEstimates[tName];
         const pCurve = powerCurves[tName];
+        const corrPowers = new Float64Array(stampsCount);
         let sumCorrPower = 0;
 
         for (let i = 0; i < stampsCount; i++) {
@@ -300,16 +308,30 @@ export function generateFinalReport(
           const vCorr = vHat * Math.pow(rho / RHO_STD, 1 / 3);
           const sigma = getModelSigma(est.model, vHat);
           const pCorr = calculateExpectedPower(pCurve, vCorr, sigma);
+          corrPowers[i] = pCorr;
           if (!Number.isNaN(pCorr)) {
             sumCorrPower += pCorr;
           }
         }
 
-        correctedParkEnergy += sumCorrPower * STEP_H;
+        const eCorr = sumCorrPower * STEP_H;
+        est.densityPowerOutage = corrPowers;
+        est.densityEnergyKWh = eCorr;
+        est.densityRange80LowerKWh = !Number.isNaN(est.d90) ? eCorr / (1 + est.d90 / 100) : NaN;
+        est.densityRange80UpperKWh = !Number.isNaN(est.d10) ? eCorr / (1 + est.d10 / 100) : NaN;
+
+        correctedParkEnergy += eCorr;
       }
 
       const sensitivityPercent =
         parkEnergyKWh > 0 ? 100 * (correctedParkEnergy / parkEnergyKWh - 1) : 0;
+
+      const correctedParkRange80LowerKWh = !Number.isNaN(park_d90)
+        ? correctedParkEnergy / (1 + park_d90 / 100)
+        : NaN;
+      const correctedParkRange80UpperKWh = !Number.isNaN(park_d10)
+        ? correctedParkEnergy / (1 + park_d10 / 100)
+        : NaN;
 
       airDensityResult = {
         isApplicable: true,
@@ -318,6 +340,9 @@ export function generateFinalReport(
         meanRhoOutage: mean(rhoOutage),
         correctedParkEnergyKWh: correctedParkEnergy,
         sensitivityPercent,
+        rhoOutage,
+        correctedParkRange80LowerKWh,
+        correctedParkRange80UpperKWh,
       };
     }
   }
