@@ -3,7 +3,12 @@
  */
 import { Grid } from './grid';
 import { OutageInfo } from './outage';
-import { fitTurbineModel, predictWind, getModelSigma } from './model';
+import {
+  fitTurbineModel,
+  predictWind,
+  getModelSigma,
+  computeCenteredRunningMean,
+} from './model';
 import { interpolatePower, calculateExpectedPower, STEP_H } from './power';
 import { PowerCurve } from './parse';
 import { percentile, mean } from './linalg';
@@ -37,6 +42,7 @@ export interface ParkCombinationResult {
   meanWindRMSE: number;
   windowsCount: number;
   isChosen: boolean;
+  isWithinNoiseBand?: boolean;
   windows: WindowResult[];
   turbineMedians: Record<string, number>; // median |ΔE%| per turbine
   turbineDeltaEArrays: Record<string, number[]>; // array of ΔE% over all windows
@@ -82,16 +88,63 @@ export function runBacktestForCombination(
   parkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
   powerCurves: Record<string, PowerCurve>,
-  nSectors: number = 8
+  nSectors: number = 8,
+  smooth: number = 5,
+  turbulence: boolean = true,
+  usedTurbines: string[] = []
 ): ParkCombinationResult {
-  const { nRows, windSpeed } = grid;
+  const { nRows, windSpeed, windSpeedStdDev } = grid;
   const { durationHours, targetTurbines } = outage;
 
   // Window length L in hours, stamps count = L * 6
   const L = durationHours;
   const nWindowStamps = Math.round(L * 6);
-  const stepStamps = Math.round((L + 12) * 6); // step = L + 12h
+  const stepStamps = Math.round((L + 12) * 6); // step = L + 12h = 84h
   const bufferStamps = 72; // 12 hours = 72 10-minute stamps
+
+  // 1. Smoothed park means for the regression features
+  const smoothedParkMeans: Record<string, Float64Array> = {};
+  for (const p of combinationParks) {
+    if (parkMeans[p]) {
+      smoothedParkMeans[p] = computeCenteredRunningMean(parkMeans[p], smooth);
+    }
+  }
+
+  // 2. Pre-screen qualifying reference turbines for turbulence
+  const qualifyingTurbines: string[] = [];
+  if (turbulence) {
+    for (const tName of usedTurbines) {
+      const stdArr = windSpeedStdDev[tName];
+      if (!stdArr) continue;
+      let validCount = 0;
+      for (let t = 0; t < nRows; t++) {
+        if (!Number.isNaN(stdArr[t])) {
+          validCount++;
+        }
+      }
+      if (nRows > 0 && validCount / nRows > 0.5) {
+        qualifyingTurbines.push(tName);
+      }
+    }
+  }
+
+  let smoothedS: Float64Array | null = null;
+  if (qualifyingTurbines.length > 0) {
+    const rawS = new Float64Array(nRows);
+    for (let t = 0; t < nRows; t++) {
+      let sum = 0;
+      let count = 0;
+      for (const tName of qualifyingTurbines) {
+        const v = windSpeedStdDev[tName][t];
+        if (!Number.isNaN(v)) {
+          sum += v;
+          count++;
+        }
+      }
+      rawS[t] = count > 0 ? sum / count : NaN;
+    }
+    smoothedS = computeCenteredRunningMean(rawS, smooth);
+  }
 
   // Find first and last known stamp index
   let firstKnownIdx = -1;
@@ -142,7 +195,7 @@ export function runBacktestForCombination(
     }
 
     // Skip condition:
-    // "skip the window if the target turbines have on average < 50 % values there or test has < L·6·0.5 stamps."
+    // skip if target turbines have on average < 50 % values there or under 216 known stamps
     const expectedValues = targetTurbines.length * nWindowStamps;
     const avgTargetRatio = expectedValues > 0 ? targetValuesCount / expectedValues : 0;
     const minTestStamps = nWindowStamps * 0.5;
@@ -159,6 +212,31 @@ export function runBacktestForCombination(
 
     for (let t = 0; t < nRows; t++) {
       windowFitMask[t] = knownMask[t] && (t < excludeStart || t > excludeEnd);
+    }
+
+    // Impute missing values for turbulence on windowFitMask
+    let windowTurbulenceSeries: Float64Array | null = null;
+    if (smoothedS) {
+      windowTurbulenceSeries = new Float64Array(smoothedS);
+      const fitVals: number[] = [];
+      for (let t = 0; t < nRows; t++) {
+        if (windowFitMask[t] && !Number.isNaN(smoothedS[t])) {
+          fitVals.push(smoothedS[t]);
+        }
+      }
+      fitVals.sort((a, b) => a - b);
+      const med =
+        fitVals.length > 0
+          ? fitVals.length % 2 === 1
+            ? fitVals[Math.floor(fitVals.length / 2)]
+            : (fitVals[fitVals.length / 2 - 1] + fitVals[fitVals.length / 2]) / 2
+          : 0;
+
+      for (let t = 0; t < nRows; t++) {
+        if (Number.isNaN(windowTurbulenceSeries[t])) {
+          windowTurbulenceSeries[t] = med;
+        }
+      }
     }
 
     // Fit model on fit, predict test
@@ -180,7 +258,9 @@ export function runBacktestForCombination(
         parkMeans,
         sectors,
         windowFitMask,
-        nSectors
+        nSectors,
+        smoothedParkMeans,
+        windowTurbulenceSeries
       );
 
       let sumSqWind = 0;
@@ -300,7 +380,8 @@ export function runBacktestForCombination(
 }
 
 /**
- * Runs backtest for all non-empty park combinations and chooses the lowest score.
+ * Runs backtest for all non-empty park combinations and chooses the best combination
+ * using the noise band tie-break rule.
  */
 export function evaluateAllParkCombinations(
   grid: Grid,
@@ -311,7 +392,10 @@ export function evaluateAllParkCombinations(
   sectors: Float64Array,
   powerCurves: Record<string, PowerCurve>,
   onProgress?: (combIndex: number, total: number, key: string) => void,
-  nSectors: number = 8
+  nSectors: number = 8,
+  smooth: number = 5,
+  turbulence: boolean = true,
+  usedTurbines: string[] = []
 ): { results: ParkCombinationResult[]; chosenCombination: ParkCombinationResult } {
   const combinations = getParkCombinations(usedParks);
   const results: ParkCombinationResult[] = [];
@@ -330,25 +414,35 @@ export function evaluateAllParkCombinations(
       parkMeans,
       sectors,
       powerCurves,
-      nSectors
+      nSectors,
+      smooth,
+      turbulence,
+      usedTurbines
     );
     results.push(res);
   }
 
-  // Find lowest selection score
+  // Part 3: Noise band tie-break rule
   let bestScore = Infinity;
-  let bestIdx = 0;
-  for (let i = 0; i < results.length; i++) {
-    if (results[i].selectionScore < bestScore) {
-      bestScore = results[i].selectionScore;
-      bestIdx = i;
+  for (const r of results) {
+    if (r.selectionScore < bestScore) {
+      bestScore = r.selectionScore;
     }
   }
 
-  results[bestIdx].isChosen = true;
+  for (const r of results) {
+    r.isWithinNoiseBand = r.selectionScore <= bestScore + 2.0;
+  }
+
+  // Among combinations whose score is within 2.0 points of best score, choose lowest mean wind RMSE
+  const candidates = results.filter((r) => r.isWithinNoiseBand);
+  candidates.sort((a, b) => a.meanWindRMSE - b.meanWindRMSE);
+
+  const chosen = candidates[0] || results[0];
+  chosen.isChosen = true;
 
   return {
     results,
-    chosenCombination: results[bestIdx],
+    chosenCombination: chosen,
   };
 }

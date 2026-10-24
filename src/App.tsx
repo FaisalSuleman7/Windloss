@@ -45,7 +45,12 @@ export default function App() {
   const [isDemoActive, setIsDemoActive] = useState<boolean>(false);
   const [showDemoDropModal, setShowDemoDropModal] = useState<boolean>(false);
   const [cachedRawFiles, setCachedRawFiles] = useState<{ name: string; content: string | ArrayBuffer }[]>([]);
-  const [trainingOption, setTrainingOption] = useState<TrainingDataOption>('before_outage');
+  const [trainingOption, setTrainingOption] = useState<TrainingDataOption>('notTest');
+  const [nSectors, setNSectors] = useState<number>(8);
+  const [smooth, setSmooth] = useState<number>(5);
+  const [turbulence, setTurbulence] = useState<boolean>(true);
+  const [manualParks, setManualParks] = useState<string[] | undefined>(undefined);
+  const [manualOutage, setManualOutage] = useState<{ targetPark: string; startIndex: number; endIndex: number } | undefined>(undefined);
   const [useDensity, setUseDensity] = useState<boolean>(false);
 
   // Guided tour state
@@ -107,7 +112,7 @@ export default function App() {
       setIsDemoActive(true);
     }
 
-    calculate(files, { trainingOption });
+    calculate(files, { trainingOption, nSectors, smooth, turbulence });
   };
 
   // Demo Data loader: check /demo/manifest.json, otherwise open drop zone modal
@@ -130,7 +135,7 @@ export default function App() {
           setIsDemoActive(true);
           setCachedRawFiles(fetchedFiles);
           advanceOnNextResult.current = true;
-          calculate(fetchedFiles, { trainingOption });
+          calculate(fetchedFiles, { trainingOption, nSectors, smooth, turbulence });
           return;
         }
       }
@@ -139,7 +144,7 @@ export default function App() {
     }
 
     setShowDemoDropModal(true);
-  }, [calculate, trainingOption]);
+  }, [calculate, trainingOption, nSectors, smooth, turbulence]);
 
   const handleDemoFilesDropped = (files: { name: string; content: string | ArrayBuffer }[]) => {
     setShowDemoDropModal(false);
@@ -148,20 +153,36 @@ export default function App() {
   };
 
   const handleUpdateOptions = (
-    manualOutage?: { targetPark: string; startIndex: number; endIndex: number },
+    newManualOutage?: { targetPark: string; startIndex: number; endIndex: number },
     newTrainingOption?: TrainingDataOption,
-    manualParks?: string[]
+    newManualParks?: string[],
+    newNSectors?: number,
+    newSmooth?: number,
+    newTurbulence?: boolean
   ) => {
-    if (newTrainingOption) {
-      setTrainingOption(newTrainingOption);
-    }
+    const effOutage = newManualOutage !== undefined ? newManualOutage : manualOutage;
+    const effTraining = newTrainingOption !== undefined ? newTrainingOption : trainingOption;
+    const effParks = newManualParks !== undefined ? newManualParks : manualParks;
+    const effSectors = newNSectors !== undefined ? newNSectors : nSectors;
+    const effSmooth = newSmooth !== undefined ? newSmooth : smooth;
+    const effTurb = newTurbulence !== undefined ? newTurbulence : turbulence;
+
+    if (newTrainingOption !== undefined) setTrainingOption(newTrainingOption);
+    if (newManualOutage !== undefined) setManualOutage(newManualOutage);
+    if (newManualParks !== undefined) setManualParks(newManualParks);
+    if (newNSectors !== undefined) setNSectors(newNSectors);
+    if (newSmooth !== undefined) setSmooth(newSmooth);
+    if (newTurbulence !== undefined) setTurbulence(newTurbulence);
 
     if (cachedRawFiles.length === 0) return;
 
     const options: CalculationOptions = {
-      manualOutage,
-      manualParkCombination: manualParks,
-      trainingOption: newTrainingOption || trainingOption,
+      manualOutage: effOutage,
+      manualParkCombination: effParks,
+      trainingOption: effTraining,
+      nSectors: effSectors,
+      smooth: effSmooth,
+      turbulence: effTurb,
     };
 
     calculate(cachedRawFiles, options);
@@ -339,7 +360,13 @@ export default function App() {
 
               {activeStep === 5 && (
                 result ? (
-                  <Step5Method result={result} />
+                  <Step5Method
+                    result={result}
+                    onUpdateMethodOptions={(sec, sm, tb) =>
+                      handleUpdateOptions(undefined, undefined, undefined, sec, sm, tb)
+                    }
+                    isCalculating={isCalculating}
+                  />
                 ) : (
                   <NoDataNotice onGoToStart={() => setActiveStep(1)} onLoadDemo={handleLoadDemoData} />
                 )

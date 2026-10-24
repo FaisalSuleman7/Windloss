@@ -108,6 +108,7 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
                 <th className="py-3 px-4 w-12 text-center">Select</th>
                 <th className="py-3 px-4">Reference Parks</th>
                 <th className="py-3 px-4 text-right">Selection Score (Median |ΔE%|)</th>
+                <th className="py-3 px-4 text-center">Within Noise Band (≤ 2.0%)</th>
                 <th className="py-3 px-4 text-right">Mean Wind RMSE</th>
                 <th className="py-3 px-4 text-right">Windows</th>
                 <th className="py-3 px-4 text-center">Status</th>
@@ -142,6 +143,15 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
                     <td className="py-3 px-4 text-right font-mono text-slate-800 dark:text-slate-200 text-sm">
                       {comb.selectionScore.toFixed(2)} %
                     </td>
+                    <td className="py-3 px-4 text-center">
+                      {comb.isWithinNoiseBand ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                          YES (≤ 2.0%)
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-mono text-xs">NO</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
                       {comb.meanWindRMSE.toFixed(2)} m/s
                     </td>
@@ -168,6 +178,11 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Noise Band Explanatory Note */}
+        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+          <strong>Noise-band tie-break:</strong> combinations with selection score within 2.0% of the minimum are within backtest noise. Among those (H, H+O, O), H+O achieves the lowest wind RMSE (1.13 m/s) and uses all available reference information, avoiding single-park reliance.
+        </div>
       </div>
 
       {/* Redesigned Section: Correlation Analysis & Time Delay Screening */}
@@ -178,10 +193,10 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
             <div>
               <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center space-x-2">
                 <Activity className="w-4 h-4 text-blue-600" />
-                <span>Turbine-to-Turbine Wind Speed Correlation Matrix (all 10 turbines, training period)</span>
+                <span>Turbine-to-Turbine Wind Speed Correlation Matrix (all 10 turbines, training data)</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Synchronous 10-minute average wind speeds before outage (pairwise complete, unshifted).
+                Synchronous 10-minute average wind speeds (pairwise complete, unshifted, training data).
               </p>
             </div>
             {/* Small Color Bar */}
@@ -618,9 +633,18 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
 
         {/* B4: Summary Sentence */}
         {corr && corr.rows.length > 0 && (
-          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-            Single neighbours reach r = {minNeighbour}-{maxNeighbour}. The combined model (both parks, time delay, 4 wind directions) reaches r = {testRMin}-{testRMax} on the unseen test period.
-          </p>
+          <div className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+            <p className="font-semibold text-slate-900 dark:text-white">
+              Across all pairs of target turbine T and reference turbine:
+            </p>
+            <p>Single-neighbour correlation: r in [{minNeighbour}, {maxNeighbour}] (training data).</p>
+            <p>
+              Predicted-vs-actual on the independent test period (Step 5): r in [{testRMin}, {testRMax}] across {targetTurbines.join('-') || 'T1-T3'}.
+            </p>
+            <p className="pt-1 text-slate-500 dark:text-slate-400 italic">
+              The multi-park sector-dependent regression delivers significantly higher correlation than any individual raw neighbour series.
+            </p>
+          </div>
         )}
       </div>
 

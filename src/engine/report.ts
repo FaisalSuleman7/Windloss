@@ -3,7 +3,14 @@
  */
 import { Grid } from './grid';
 import { OutageInfo } from './outage';
-import { TurbineModel, fitTurbineModel, predictWind, getModelSigma } from './model';
+import {
+  TurbineModel,
+  fitTurbineModel,
+  predictWind,
+  getModelSigma,
+  computeCenteredRunningMean,
+  computeTurbulenceSeries,
+} from './model';
 import { PowerCurve } from './parse';
 import { calculateExpectedPower, STEP_H } from './power';
 import { ParkCombinationResult } from './backtest';
@@ -48,6 +55,12 @@ export interface FinalReport {
   targetTurbines: string[];
   chosenParks: string[];
   trainingOption: string;
+  methodOptions?: {
+    nSectors: number;
+    smooth: number;
+    turbulence: boolean;
+  };
+  turbulenceNote?: string;
   turbines: Record<string, TurbineFinalEstimate>;
   parkEnergyKWh: number;
   park_d10: number;
@@ -75,12 +88,41 @@ export function generateFinalReport(
   sectors: Float64Array,
   powerCurves: Record<string, PowerCurve>,
   usedTurbines: string[],
-  nSectors: number = 8
+  nSectors: number = 8,
+  smooth: number = 5,
+  turbulence: boolean = true
 ): FinalReport {
   const { timestamps, dateStrings, windSpeed, airPressure, ambientTemperature, turbineParkMap } =
     grid;
   const { targetPark, targetTurbines, startIndex, endIndex, stampsCount } = outage;
   const chosenParks = chosenCombination.parks;
+
+  // Smoothed park means for the regression and prediction features
+  const smoothedParkMeans: Record<string, Float64Array> = {};
+  for (const p of chosenParks) {
+    if (parkMeans[p]) {
+      smoothedParkMeans[p] = computeCenteredRunningMean(parkMeans[p], smooth);
+    }
+  }
+
+  // Pre-calculate turbulence series if requested
+  let turbulenceSeries: Float64Array | null = null;
+  let turbulenceNote: string | undefined = undefined;
+
+  if (turbulence) {
+    const turbRes = computeTurbulenceSeries(
+      grid.windSpeedStdDev,
+      grid.nRows,
+      usedTurbines,
+      smooth,
+      knownMask
+    );
+    if (turbRes.hasTurbulenceData) {
+      turbulenceSeries = turbRes.turbulenceSeries;
+    } else {
+      turbulenceNote = 'no turbulence data - input skipped';
+    }
+  }
 
   const outageTimestamps = new Float64Array(stampsCount);
   const outageDates: string[] = new Array(stampsCount);
@@ -108,7 +150,9 @@ export function generateFinalReport(
       parkMeans,
       sectors,
       knownMask,
-      nSectors
+      nSectors,
+      smoothedParkMeans,
+      turbulenceSeries
     );
 
     const predictedWindOutage = new Float64Array(stampsCount);
@@ -357,6 +401,12 @@ export function generateFinalReport(
     targetTurbines,
     chosenParks,
     trainingOption,
+    methodOptions: {
+      nSectors,
+      smooth,
+      turbulence,
+    },
+    turbulenceNote,
     turbines: turbineEstimates,
     parkEnergyKWh,
     park_d10,

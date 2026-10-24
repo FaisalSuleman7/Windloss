@@ -340,8 +340,606 @@ export function runSelfTestChecks(result: EngineResult): SelfTestCheckItem[] {
 }
 
 /**
- * Section B. Official protocol reference checks (training before outage).
- * Verifies the 13 demo files against the official BayWa evaluation benchmarks.
+ * Section B. Official protocol and final method (notTest, 8 sectors, smooth 5, turbulence).
+ * Verifies the 13 demo files against the final BayWa benchmark per MSG12.
+ */
+export function runSectionBChecks(result: EngineResult): SelfTestCheckItem[] {
+  const checks: SelfTestCheckItem[] = [];
+  const { chosenCombination, allCombinations, report, screening } = result;
+  const estT1 = report.turbines['T1'];
+  const estT2 = report.turbines['T2'];
+  const estT3 = report.turbines['T3'];
+
+  // 1. Energy kWh (0.1%):
+  // Park energy 314,518.7 kWh | T1 88,680.8 | T2 125,622.3 | T3 100,215.5
+  const checkEnergy = (tName: string, expKWh: number, actualKWh: number, id: string) => {
+    const diffPct = Math.abs((actualKWh - expKWh) / expKWh) * 100;
+    checks.push({
+      id,
+      category: 'Energy & Range',
+      name: `${tName} Lost Energy`,
+      expected: `${expKWh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`,
+      actual: `${actualKWh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`,
+      passed: diffPct <= 0.1,
+      tolerance: '±0.1 %',
+      detail: `Rel diff: ${diffPct.toFixed(3)} %`,
+    });
+  };
+
+  checkEnergy('Park Total', 314518.7, report.parkEnergyKWh, 'b_final_energy_park');
+  if (estT1) checkEnergy('T1', 88680.8, estT1.energyKWh, 'b_final_energy_T1');
+  if (estT2) checkEnergy('T2', 125622.3, estT2.energyKWh, 'b_final_energy_T2');
+  if (estT3) checkEnergy('T3', 100215.5, estT3.energyKWh, 'b_final_energy_T3');
+
+  // 2. Park 80% range 281,060 - 362,437 kWh (0.5%)
+  const expLower = 281060;
+  const expUpper = 362437;
+  const actLower = report.parkRange80LowerKWh;
+  const actUpper = report.parkRange80UpperKWh;
+  const diffLowerPct = Math.abs((actLower - expLower) / expLower) * 100;
+  const diffUpperPct = Math.abs((actUpper - expUpper) / expUpper) * 100;
+
+  checks.push({
+    id: 'b_final_park_80_range',
+    category: 'Energy & Range',
+    name: 'Park 80% Uncertainty Range',
+    expected: '281,060 – 362,437 kWh',
+    actual: `${Math.round(actLower).toLocaleString('en-US')} – ${Math.round(actUpper).toLocaleString('en-US')} kWh`,
+    passed: diffLowerPct <= 0.5 && diffUpperPct <= 0.5,
+    tolerance: '±0.5 %',
+    detail: `Lower err: ${diffLowerPct.toFixed(2)}%, Upper err: ${diffUpperPct.toFixed(2)}%`,
+  });
+
+  // 3. Backtest windows 23 (exact) | scores H 8.14 %, H+O 8.61 %, O 8.85 % (0.05); wind RMSE H 1.241, H+O 1.127, O 1.222 (0.002) -> chosen H+O
+  checks.push({
+    id: 'b_final_windows_count',
+    category: 'Backtest Validation',
+    name: 'Backtest Windows Evaluated (notTest)',
+    expected: '23',
+    actual: String(chosenCombination.windowsCount),
+    passed: chosenCombination.windowsCount === 23,
+    tolerance: 'exact',
+  });
+
+  const scoreH = allCombinations.find((c) => c.combinationKey === 'H')?.selectionScore;
+  const scoreHO = allCombinations.find((c) => c.combinationKey === 'H+O')?.selectionScore;
+  const scoreO = allCombinations.find((c) => c.combinationKey === 'O')?.selectionScore;
+
+  checks.push({
+    id: 'b_final_score_H',
+    category: 'Backtest Validation',
+    name: 'Combination Score: H',
+    expected: '8.14 %',
+    actual: scoreH !== undefined ? `${scoreH.toFixed(2)} %` : 'N/A',
+    passed: scoreH !== undefined && Math.abs(scoreH - 8.14) <= 0.05,
+    tolerance: '±0.05 %',
+  });
+
+  checks.push({
+    id: 'b_final_score_HO',
+    category: 'Backtest Validation',
+    name: 'Combination Score: H+O',
+    expected: '8.61 %',
+    actual: scoreHO !== undefined ? `${scoreHO.toFixed(2)} %` : 'N/A',
+    passed: scoreHO !== undefined && Math.abs(scoreHO - 8.61) <= 0.05,
+    tolerance: '±0.05 %',
+  });
+
+  checks.push({
+    id: 'b_final_score_O',
+    category: 'Backtest Validation',
+    name: 'Combination Score: O',
+    expected: '8.85 %',
+    actual: scoreO !== undefined ? `${scoreO.toFixed(2)} %` : 'N/A',
+    passed: scoreO !== undefined && Math.abs(scoreO - 8.85) <= 0.05,
+    tolerance: '±0.05 %',
+  });
+
+  const rmseH = allCombinations.find((c) => c.combinationKey === 'H')?.meanWindRMSE;
+  const rmseHO = allCombinations.find((c) => c.combinationKey === 'H+O')?.meanWindRMSE;
+  const rmseO = allCombinations.find((c) => c.combinationKey === 'O')?.meanWindRMSE;
+
+  checks.push({
+    id: 'b_final_rmse_H',
+    category: 'Backtest Validation',
+    name: 'Combination Wind RMSE: H',
+    expected: '1.241 m/s',
+    actual: rmseH !== undefined ? `${rmseH.toFixed(3)} m/s` : 'N/A',
+    passed: rmseH !== undefined && Math.abs(rmseH - 1.241) <= 0.002,
+    tolerance: '±0.002 m/s',
+  });
+
+  checks.push({
+    id: 'b_final_rmse_HO',
+    category: 'Backtest Validation',
+    name: 'Combination Wind RMSE: H+O',
+    expected: '1.127 m/s',
+    actual: rmseHO !== undefined ? `${rmseHO.toFixed(3)} m/s` : 'N/A',
+    passed: rmseHO !== undefined && Math.abs(rmseHO - 1.127) <= 0.002,
+    tolerance: '±0.002 m/s',
+  });
+
+  checks.push({
+    id: 'b_final_rmse_O',
+    category: 'Backtest Validation',
+    name: 'Combination Wind RMSE: O',
+    expected: '1.222 m/s',
+    actual: rmseO !== undefined ? `${rmseO.toFixed(3)} m/s` : 'N/A',
+    passed: rmseO !== undefined && Math.abs(rmseO - 1.222) <= 0.002,
+    tolerance: '±0.002 m/s',
+  });
+
+  checks.push({
+    id: 'b_final_chosen_combination',
+    category: 'Backtest Validation',
+    name: 'Chosen Combination (Noise Band Rule)',
+    expected: 'H+O',
+    actual: chosenCombination.combinationKey,
+    passed: chosenCombination.combinationKey === 'H+O',
+    tolerance: 'exact',
+    detail: 'H+O chosen because all within noise band and H+O has lowest wind RMSE (1.127 m/s)',
+  });
+
+  // 4. Lags T1 H:-3 O:0 | T2 H:-3 O:1 | T3 H:-3 O:0 (exact)
+  if (estT1) {
+    const lagStr = `H: ${estT1.model.lags['H']}, O: ${estT1.model.lags['O']}`;
+    checks.push({
+      id: 'b_final_lags_T1',
+      category: 'Model & Lags',
+      name: 'T1 Delay Lags (H / O)',
+      expected: 'H: -3, O: 0',
+      actual: lagStr,
+      passed: estT1.model.lags['H'] === -3 && estT1.model.lags['O'] === 0,
+      tolerance: 'exact',
+    });
+  }
+
+  if (estT2) {
+    const lagStr = `H: ${estT2.model.lags['H']}, O: ${estT2.model.lags['O']}`;
+    checks.push({
+      id: 'b_final_lags_T2',
+      category: 'Model & Lags',
+      name: 'T2 Delay Lags (H / O)',
+      expected: 'H: -3, O: 1',
+      actual: lagStr,
+      passed: estT2.model.lags['H'] === -3 && estT2.model.lags['O'] === 1,
+      tolerance: 'exact',
+    });
+  }
+
+  if (estT3) {
+    const lagStr = `H: ${estT3.model.lags['H']}, O: ${estT3.model.lags['O']}`;
+    checks.push({
+      id: 'b_final_lags_T3',
+      category: 'Model & Lags',
+      name: 'T3 Delay Lags (H / O)',
+      expected: 'H: -3, O: 0',
+      actual: lagStr,
+      passed: estT3.model.lags['H'] === -3 && estT3.model.lags['O'] === 0,
+      tolerance: 'exact',
+    });
+  }
+
+  // 5. sigma_global T1 1.1872 | T2 1.0837 | T3 1.0829 (0.001)
+  const checkSigma = (tName: string, expSig: number, actSig: number, id: string) => {
+    const diff = Math.abs(actSig - expSig);
+    checks.push({
+      id,
+      category: 'Model & Lags',
+      name: `${tName} Global Residual Sigma`,
+      expected: `${expSig.toFixed(4)} m/s`,
+      actual: `${actSig.toFixed(4)} m/s`,
+      passed: diff <= 0.001,
+      tolerance: '±0.001 m/s',
+      detail: `Diff: ${diff.toFixed(5)} m/s`,
+    });
+  };
+
+  if (estT1) checkSigma('T1', 1.1872, estT1.model.sigmaGlobal, 'b_final_sigma_T1');
+  if (estT2) checkSigma('T2', 1.0837, estT2.model.sigmaGlobal, 'b_final_sigma_T2');
+  if (estT3) checkSigma('T3', 1.0829, estT3.model.sigmaGlobal, 'b_final_sigma_T3');
+
+  // 6. T1 predicted wind stamps 0,1,2: 8.7673, 8.6820, 8.6362 (0.001)
+  if (estT1 && estT1.predictedWindOutage.length >= 3) {
+    const s0 = estT1.predictedWindOutage[0];
+    const s1 = estT1.predictedWindOutage[1];
+    const s2 = estT1.predictedWindOutage[2];
+
+    const checkWindStamp = (stampIdx: number, expW: number, actW: number, id: string) => {
+      const diff = Math.abs(actW - expW);
+      checks.push({
+        id,
+        category: 'Predicted Wind',
+        name: `T1 Predicted Wind Stamp [${stampIdx}]`,
+        expected: `${expW.toFixed(4)} m/s`,
+        actual: `${actW.toFixed(4)} m/s`,
+        passed: diff <= 0.001,
+        tolerance: '±0.001 m/s',
+        detail: `Diff: ${diff.toFixed(5)} m/s`,
+      });
+    };
+
+    checkWindStamp(0, 8.7673, s0, 'b_final_wind_t1_s0');
+    checkWindStamp(1, 8.6820, s1, 'b_final_wind_t1_s1');
+    checkWindStamp(2, 8.6362, s2, 'b_final_wind_t1_s2');
+  }
+
+  // 7. Density sensitivity -2.01 % (0.05) -> 308,212 kWh
+  if (report.airDensity && report.airDensity.sensitivityPercent !== undefined) {
+    const actSens = report.airDensity.sensitivityPercent;
+    const expSens = -2.01;
+    const diffSens = Math.abs(actSens - expSens);
+
+    checks.push({
+      id: 'b_final_density_sens',
+      category: 'Air Density',
+      name: 'Air Density Energy Sensitivity',
+      expected: '-2.01 %',
+      actual: `${actSens.toFixed(2)} %`,
+      passed: diffSens <= 0.05,
+      tolerance: '±0.05 %',
+      detail: `Diff: ${diffSens.toFixed(3)}%`,
+    });
+
+    const actCorrKWh = report.airDensity.correctedParkEnergyKWh ?? 0;
+    const expCorrKWh = 308212;
+    const diffKWhPct = Math.abs((actCorrKWh - expCorrKWh) / expCorrKWh) * 100;
+
+    checks.push({
+      id: 'b_final_density_kwh',
+      category: 'Air Density',
+      name: 'Density-Corrected Park Energy',
+      expected: '308,212 kWh',
+      actual: `${Math.round(actCorrKWh).toLocaleString('en-US')} kWh`,
+      passed: diffKWhPct <= 0.1,
+      tolerance: '±0.1 %',
+      detail: `Diff: ${diffKWhPct.toFixed(3)}%`,
+    });
+  }
+
+  // 8. Test 4-9 Sep (864 stamps per turbine)
+  const tp = result.testPeriod || report.testPeriod;
+  if (tp && tp.turbines) {
+    const tpT1 = tp.turbines['T1'];
+    const tpT2 = tp.turbines['T2'];
+    const tpT3 = tp.turbines['T3'];
+
+    const checkTestTurbine = (
+      tName: string,
+      met: typeof tpT1,
+      exp: {
+        windRMSE: number;
+        windMAE: number;
+        r: number;
+        powerRMSE: number;
+        powerMAE: number;
+        energyDevPct: number;
+      },
+      prefix: string
+    ) => {
+      if (!met) return;
+
+      const diffRMSE = Math.abs(met.windRMSE - exp.windRMSE);
+      checks.push({
+        id: `${prefix}_rmse`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Wind RMSE`,
+        expected: `${exp.windRMSE.toFixed(4)} m/s`,
+        actual: `${met.windRMSE.toFixed(4)} m/s`,
+        passed: diffRMSE <= 0.002,
+        tolerance: '±0.002 m/s',
+      });
+
+      const diffMAE = Math.abs(met.windMAE - exp.windMAE);
+      checks.push({
+        id: `${prefix}_mae`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Wind MAE`,
+        expected: `${exp.windMAE.toFixed(4)} m/s`,
+        actual: `${met.windMAE.toFixed(4)} m/s`,
+        passed: diffMAE <= 0.002,
+        tolerance: '±0.002 m/s',
+      });
+
+      const diffR = Math.abs(met.r - exp.r);
+      checks.push({
+        id: `${prefix}_r`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Pearson r`,
+        expected: exp.r.toFixed(4),
+        actual: met.r.toFixed(4),
+        passed: diffR <= 0.002,
+        tolerance: '±0.002',
+      });
+
+      const diffPRMSE = Math.abs((met.powerRMSE - exp.powerRMSE) / exp.powerRMSE) * 100;
+      checks.push({
+        id: `${prefix}_p_rmse`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Power RMSE`,
+        expected: `${exp.powerRMSE.toFixed(2)} kW`,
+        actual: `${met.powerRMSE.toFixed(2)} kW`,
+        passed: diffPRMSE <= 0.2,
+        tolerance: '±0.2 %',
+      });
+
+      const diffPMAE = Math.abs((met.powerMAE - exp.powerMAE) / exp.powerMAE) * 100;
+      checks.push({
+        id: `${prefix}_p_mae`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Power MAE`,
+        expected: `${exp.powerMAE.toFixed(2)} kW`,
+        actual: `${met.powerMAE.toFixed(2)} kW`,
+        passed: diffPMAE <= 0.2,
+        tolerance: '±0.2 %',
+      });
+
+      const diffDev = Math.abs(met.energyDevPct - exp.energyDevPct);
+      checks.push({
+        id: `${prefix}_dev`,
+        category: 'Test Period 4-9 Sep',
+        name: `${tName} Test Energy Dev %`,
+        expected: `${exp.energyDevPct >= 0 ? '+' : ''}${exp.energyDevPct.toFixed(2)} %`,
+        actual: `${met.energyDevPct >= 0 ? '+' : ''}${met.energyDevPct.toFixed(2)} %`,
+        passed: diffDev <= 0.05,
+        tolerance: '±0.05 points',
+      });
+    };
+
+    if (tpT1) {
+      checkTestTurbine(
+        'T1',
+        tpT1,
+        {
+          windRMSE: 1.3941,
+          windMAE: 1.0910,
+          r: 0.8495,
+          powerRMSE: 822.16,
+          powerMAE: 615.34,
+          energyDevPct: 13.20,
+        },
+        'b_final_t1'
+      );
+    }
+
+    if (tpT2) {
+      checkTestTurbine(
+        'T2',
+        tpT2,
+        {
+          windRMSE: 1.2103,
+          windMAE: 0.9009,
+          r: 0.8975,
+          powerRMSE: 732.29,
+          powerMAE: 504.47,
+          energyDevPct: -1.02,
+        },
+        'b_final_t2'
+      );
+    }
+
+    if (tpT3) {
+      checkTestTurbine(
+        'T3',
+        tpT3,
+        {
+          windRMSE: 1.3069,
+          windMAE: 0.9989,
+          r: 0.8570,
+          powerRMSE: 814.79,
+          powerMAE: 583.67,
+          energyDevPct: -3.37,
+        },
+        'b_final_t3'
+      );
+    }
+
+    // Park level test metrics
+    const diffMeasPark = Math.abs((tp.parkMeasuredEnergyKWh - 797057) / 797057) * 100;
+    checks.push({
+      id: 'b_final_test_park_meas',
+      category: 'Test Period 4-9 Sep',
+      name: 'Park Test Measured Energy',
+      expected: '797,057 kWh',
+      actual: `${Math.round(tp.parkMeasuredEnergyKWh).toLocaleString('en-US')} kWh`,
+      passed: diffMeasPark <= 0.1,
+      tolerance: '±0.1 %',
+    });
+
+    const diffPredPark = Math.abs((tp.parkPredictedEnergyKWh - 812865) / 812865) * 100;
+    checks.push({
+      id: 'b_final_test_park_pred',
+      category: 'Test Period 4-9 Sep',
+      name: 'Park Test Predicted Energy',
+      expected: '812,865 kWh',
+      actual: `${Math.round(tp.parkPredictedEnergyKWh).toLocaleString('en-US')} kWh`,
+      passed: diffPredPark <= 0.1,
+      tolerance: '±0.1 %',
+    });
+
+    const diffParkDev = Math.abs(tp.parkEnergyDevPct - 1.98);
+    checks.push({
+      id: 'b_final_test_park_dev',
+      category: 'Test Period 4-9 Sep',
+      name: 'Park Test Energy Dev %',
+      expected: '+1.98 %',
+      actual: `${tp.parkEnergyDevPct >= 0 ? '+' : ''}${tp.parkEnergyDevPct.toFixed(2)} %`,
+      passed: diffParkDev <= 0.05,
+      tolerance: '±0.05 points',
+    });
+
+    const diffPooledRMSE = Math.abs(tp.meanWindRMSE - 1.3059);
+    checks.push({
+      id: 'b_final_test_park_rmse',
+      category: 'Test Period 4-9 Sep',
+      name: 'Park Test Pooled Wind RMSE',
+      expected: '1.3059 m/s',
+      actual: `${tp.meanWindRMSE.toFixed(4)} m/s`,
+      passed: diffPooledRMSE <= 0.002,
+      tolerance: '±0.002 m/s',
+    });
+
+    const diffPooledMAE = Math.abs(tp.meanWindMAE - 0.9969);
+    checks.push({
+      id: 'b_final_test_park_mae',
+      category: 'Test Period 4-9 Sep',
+      name: 'Park Test Pooled Wind MAE',
+      expected: '0.9969 m/s',
+      actual: `${tp.meanWindMAE.toFixed(4)} m/s`,
+      passed: diffPooledMAE <= 0.002,
+      tolerance: '±0.002 m/s',
+    });
+  }
+
+  // 9. Correlation on the training data: O1-O2 0.9688, H3-H5 0.9158, T2-T3 0.8922, H2-T1 0.6508 ; mean of all references vs T1 0.7547, T2 0.8247, T3 0.8005 (0.002)
+  const corr = screening.correlationAnalysis;
+  if (corr) {
+    if (corr.allTurbinesMap && corr.allTurbinesMap.matrix) {
+      const { turbines, matrix } = corr.allTurbinesMap;
+      const checkMatrixVal = (tA: string, tB: string, expR: number, id: string) => {
+        const i = turbines.indexOf(tA);
+        const j = turbines.indexOf(tB);
+        const val = i !== -1 && j !== -1 ? matrix[i][j] : NaN;
+        const diff = Math.abs(val - expR);
+        checks.push({
+          id,
+          category: 'Correlation on Training Data',
+          name: `Pair Correlation: ${tA} ↔ ${tB}`,
+          expected: expR.toFixed(4),
+          actual: !Number.isNaN(val) ? val.toFixed(4) : 'N/A',
+          passed: diff <= 0.002,
+          tolerance: '±0.002',
+          detail: `Diff: ${diff.toFixed(5)}`,
+        });
+      };
+
+      checkMatrixVal('O1', 'O2', 0.9688, 'b_final_corr_O1_O2');
+      checkMatrixVal('H3', 'H5', 0.9158, 'b_final_corr_H3_H5');
+      checkMatrixVal('T2', 'T3', 0.8922, 'b_final_corr_T2_T3');
+      checkMatrixVal('H2', 'T1', 0.6508, 'b_final_corr_H2_T1');
+    }
+
+    const meanRow = corr.rows.find((r) => r.label === 'Mean of all reference turbines');
+    if (meanRow) {
+      const checkMeanRef = (tgt: string, expR: number, id: string) => {
+        const val = meanRow.rValues[tgt] ?? NaN;
+        const diff = Math.abs(val - expR);
+        checks.push({
+          id,
+          category: 'Correlation on Training Data',
+          name: `Mean of All References vs ${tgt}`,
+          expected: expR.toFixed(4),
+          actual: !Number.isNaN(val) ? val.toFixed(4) : 'N/A',
+          passed: diff <= 0.002,
+          tolerance: '±0.002',
+          detail: `Diff: ${diff.toFixed(5)}`,
+        });
+      };
+
+      checkMeanRef('T1', 0.7547, 'b_final_corr_mean_T1');
+      checkMeanRef('T2', 0.8247, 'b_final_corr_mean_T2');
+      checkMeanRef('T3', 0.8005, 'b_final_corr_mean_T3');
+    }
+
+    // 10. Best time shifts: T1 H -30 min O 0 ; T2 H -30 O +10 ; T3 H -30 O 0 (exact)
+    if (corr.timeDelayAnalysis) {
+      const checkShift = (tgt: string, expH: number, expO: number, id: string) => {
+        const td = corr.timeDelayAnalysis!.find((a) => a.targetTurbine === tgt);
+        const actH = td?.bestShiftH;
+        const actO = td?.bestShiftO;
+        const passed = actH === expH && actO === expO;
+        const fmt = (m: number) => (m > 0 ? `+${m}` : `${m}`);
+        checks.push({
+          id,
+          category: 'Time Delay Screening',
+          name: `Optimal Shift ${tgt} (H / O)`,
+          expected: `H: ${fmt(expH)} min, O: ${fmt(expO)} min`,
+          actual: td ? `H: ${fmt(actH!)} min, O: ${fmt(actO!)} min` : 'N/A',
+          passed,
+          tolerance: 'exact',
+        });
+      };
+
+      checkShift('T1', -30, 0, 'b_final_shift_T1');
+      checkShift('T2', -30, 10, 'b_final_shift_T2');
+      checkShift('T3', -30, 0, 'b_final_shift_T3');
+    }
+  }
+
+  // 11. BayWa-format export (standard density)
+  const t1W0 = estT1?.predictedWindOutage[0] ?? NaN;
+  const t2W0 = estT2?.predictedWindOutage[0] ?? NaN;
+  const t3W0 = estT3?.predictedWindOutage[0] ?? NaN;
+  const p0 = (estT1?.expectedPowerOutage[0] ?? 0) + (estT2?.expectedPowerOutage[0] ?? 0) + (estT3?.expectedPowerOutage[0] ?? 0);
+  const e0 = p0 / 6;
+
+  const row1Expected = '2026-09-01 00:00,8.7673,9.3974,8.8191,9879.75,1646.624';
+  const row1Actual = `${report.outageDates[0] || '2026-09-01 00:00'},${t1W0.toFixed(4)},${t2W0.toFixed(4)},${t3W0.toFixed(4)},${p0.toFixed(2)},${e0.toFixed(3)}`;
+  const row1Matches =
+    Math.abs(t1W0 - 8.7673) <= 0.002 &&
+    Math.abs(t2W0 - 9.3974) <= 0.002 &&
+    Math.abs(t3W0 - 8.8191) <= 0.002 &&
+    Math.abs(p0 - 9879.75) <= 1.0;
+
+  checks.push({
+    id: 'b_final_export_first_row',
+    category: 'BayWa Export Verification',
+    name: 'BayWa Export First Row (Standard Density)',
+    expected: row1Expected,
+    actual: row1Actual,
+    passed: row1Matches,
+    tolerance: 'wind ±0.002 m/s, power ±1 kW',
+  });
+
+  const lastIdx = (estT1?.predictedWindOutage.length ?? 1) - 1;
+  const t1WLast = estT1?.predictedWindOutage[lastIdx] ?? NaN;
+  const t2WLast = estT2?.predictedWindOutage[lastIdx] ?? NaN;
+  const t3WLast = estT3?.predictedWindOutage[lastIdx] ?? NaN;
+  const pLast = (estT1?.expectedPowerOutage[lastIdx] ?? 0) + (estT2?.expectedPowerOutage[lastIdx] ?? 0) + (estT3?.expectedPowerOutage[lastIdx] ?? 0);
+  const eLast = pLast / 6;
+
+  const rowLastExpected = '2026-09-03 23:50,5.8158,6.9492,6.3752,4216.33,702.722';
+  const rowLastActual = `${report.outageDates[lastIdx] || '2026-09-03 23:50'},${t1WLast.toFixed(4)},${t2WLast.toFixed(4)},${t3WLast.toFixed(4)},${pLast.toFixed(2)},${eLast.toFixed(3)}`;
+  const rowLastMatches =
+    Math.abs(t1WLast - 5.8158) <= 0.002 &&
+    Math.abs(t2WLast - 6.9492) <= 0.002 &&
+    Math.abs(t3WLast - 6.3752) <= 0.002 &&
+    Math.abs(pLast - 4216.33) <= 1.0;
+
+  checks.push({
+    id: 'b_final_export_last_row',
+    category: 'BayWa Export Verification',
+    name: 'BayWa Export Last Row (Standard Density)',
+    expected: rowLastExpected,
+    actual: rowLastActual,
+    passed: rowLastMatches,
+    tolerance: 'wind ±0.002 m/s, power ±1 kW',
+  });
+
+  const diffBayWaSum = Math.abs((report.parkEnergyKWh - 314518.7) / 314518.7) * 100;
+  checks.push({
+    id: 'b_final_export_sum',
+    category: 'BayWa Export Verification',
+    name: 'BayWa Export Park Energy Sum',
+    expected: '314,518.7 kWh',
+    actual: `${report.parkEnergyKWh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`,
+    passed: diffBayWaSum <= 0.1,
+    tolerance: '±0.1 %',
+  });
+
+  return checks;
+}
+
+export const runOfficialProtocolFinalChecks = runSectionBChecks;
+
+/**
+ * Section C. Variant: training before the outage, 4 sectors.
+ * (Renamed from former Section B, 42 checks unchanged).
+ */
+export const runVariantBefore4SectorsChecks = runOfficialProtocolChecks;
+
+/**
+ * Section C. Variant: training before the outage, 4 sectors (legacy alias).
  */
 export function runOfficialProtocolChecks(result: EngineResult): SelfTestCheckItem[] {
   const checks: SelfTestCheckItem[] = [];

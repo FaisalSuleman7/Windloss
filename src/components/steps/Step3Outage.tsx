@@ -246,7 +246,7 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
             <div
               className="bg-slate-500 dark:bg-slate-600 flex items-center justify-center px-2 truncate transition-all"
               style={{ flex: Math.max(outage.startIndex, 100) }}
-              title={`Training + validation: ${grid.dateStrings[0]} -> ${outage.startDateStr}`}
+              title={`Training + validation: rows outside outage and not flagged as test`}
             >
               <span className="truncate">Training + validation</span>
             </div>
@@ -268,9 +268,9 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
                 flex: Math.max(grid.nRows - outage.endIndex - 1, 80),
                 backgroundColor: '#E69F00',
               }}
-              title={`Test: ${result.testPeriod?.startDateStr || outage.endDateStr} -> ${result.testPeriod?.endDateStr || grid.dateStrings[grid.nRows - 1]}`}
+              title={`Test set: ${result.testPeriod?.startDateStr || outage.endDateStr} -> ${result.testPeriod?.endDateStr || grid.dateStrings[grid.nRows - 1]}`}
             >
-              <span className="truncate">Test</span>
+              <span className="truncate">Test set</span>
             </div>
           </div>
 
@@ -278,7 +278,7 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400 px-1 text-center sm:text-left">
             <div>
               <span className="text-slate-400 dark:text-slate-500">Train: </span>
-              <span>{grid.dateStrings[0]} &rarr; {outage.startDateStr}</span>
+              <span>Rows outside outage &amp; test</span>
             </div>
             <div className="sm:text-center">
               <span className="text-pink-600 dark:text-pink-400 font-semibold">Outage: </span>
@@ -294,13 +294,43 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
           </div>
 
           <p className="text-xs text-slate-600 dark:text-slate-400 italic pt-0.5">
-            The model learns only from the grey part, is checked inside it with backtest windows, predicts the pink part, and is scored on the amber part it has never seen.
+            The model learns from the grey part (all rows outside outage and not flagged as test), is checked with backtest windows, predicts the pink part (the outage), and is scored on the amber part (the test set) it has never seen.
           </p>
         </div>
 
-        {/* 2 Radio Option Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-          {/* Option 1: Before the outage (official protocol - default) */}
+        {/* 3 Radio Option Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          {/* Option 1: notTest (official protocol - default) */}
+          <div
+            onClick={() => handleTrainingChange('notTest')}
+            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+              activeTraining === 'notTest'
+                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                All data not flagged as test (official protocol)
+              </span>
+              <div
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
+                  activeTraining === 'notTest'
+                    ? 'border-blue-600 bg-blue-600'
+                    : 'border-slate-400'
+                }`}
+              >
+                {activeTraining === 'notTest' && (
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Default. Strict official protocol: uses all data outside outage and excluding rows flagged as test set for training and feature screening.
+            </p>
+          </div>
+
+          {/* Option 2: before_outage */}
           <div
             onClick={() => handleTrainingChange('before_outage')}
             className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
@@ -310,8 +340,8 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-sm text-slate-900 dark:text-white">
-                Before the outage (official protocol - default)
+              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                Before the outage only
               </span>
               <div
                 className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
@@ -326,11 +356,11 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
               </div>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Default. Strict official protocol: model trains strictly prior to the outage, evaluated blindly on test period after outage.
+              Model trains strictly prior to the outage period, evaluated blindly on test period after outage.
             </p>
           </div>
 
-          {/* Option 2: All measured data outside the outage */}
+          {/* Option 3: all_measured */}
           <div
             onClick={() => handleTrainingChange('all_measured')}
             className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
@@ -340,7 +370,7 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="font-bold text-sm text-slate-900 dark:text-white">
+              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
                 All measured data outside the outage (not for evaluation)
               </span>
               <div
