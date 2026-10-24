@@ -1,0 +1,22 @@
+Send after MSG8A works. Do NOT change the engine, any existing number or the Self-test values.
+
+1. CORRELATION ANALYSIS (Step 4, new card under the park ranking)
+- Title "Correlation analysis (training data before the outage)".
+- Table/heat-map: rows = every reference turbine, then one row per reference park mean ("Park H mean", "Park O mean"); columns = every target turbine. Cell = Pearson r of the 10-minute wind speeds on the training data before the outage, pairs where both exist, no time shift. 3 decimals, cell background from white (r 0.5) to navy #1D3557 (r 1.0), text white above 0.8.
+- Under the table one sentence computed from the numbers: "Single neighbours reach r = {min}-{max}. The combined model (both parks, time delay, 4 wind directions) reaches r = {test r min}-{test r max} on the unseen test period." (test r from Step 5 test table).
+- Self-test section B: add H1-T1 0.667, O1-T2 0.767, Park O mean-T3 0.745 (tolerance 0.002).
+
+2. NEW EXPORT IN THE MENTORS' FORMAT (Step 9) - make this the card with the "SUBMIT THIS FILE" badge
+- File predictions_BayWa_format_Park_{T}.csv, one row per outage stamp (432 rows for the demo), columns exactly:
+  timestamp,T1_wind_speed_ms,T2_wind_speed_ms,T3_wind_speed_ms,park_power_kw,park_energy_kwh
+  (one wind column per target turbine; generic names {T}_wind_speed_ms). park_power_kw = sum of the turbines' predicted power; park_energy_kwh = park_power_kw / 6 (energy of that 10-minute stamp, so the column sum is the total loss).
+- timestamp "YYYY-MM-DD HH:mm" local time, wind 4 decimals, power 2 decimals, energy 3 decimals, comma separator, dot decimals, no empty cells. Follows the density choice like the other exports (default standard).
+- Move the "SUBMIT THIS FILE" badge to this card; keep all other exports.
+- Demo check (official protocol, standard density): first row 2026-09-01 00:00,8.0791,9.0850,8.2347,8720.29,1453.382 ; last row 2026-09-03 23:50,6.2192,7.0066,6.4034,4619.85,769.975 ; sum of park_energy_kwh = 316,117.7.
+
+3. SMALL POLISH
+- Esc closes the guided tour (same as "Skip Tour").
+- Phone width below 640 px: hide the header subtitle so it does not overlap "Back to Loss Estimator Steps".
+- About page, replace the "About this tool" text with: "When a wind park is offline, its own wind sensors are offline too, so the energy it could have produced is unknown. This tool rebuilds the 10-minute wind at each affected turbine from neighbouring parks that kept running, using a relation learned from data before the outage, and converts it to power with each turbine's power curve. It gives the lost energy in kWh with an honest 80 % range, and everything runs in your browser - no data is sent to any server."
+
+CHECK: correlation table shows H1-T1 0.667 and O1-T2 0.767; the BayWa-format CSV first and last rows match the values above; Self-test all green; Esc closes the tour.

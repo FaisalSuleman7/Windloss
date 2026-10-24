@@ -16,6 +16,7 @@ export interface Grid {
   ambientTemperature: Record<string, Float64Array>;
   airPressure: Record<string, Float64Array>;
   windSpeedStdDev: Record<string, Float64Array>;
+  testSet?: Record<string, boolean[]>;
 }
 
 /**
@@ -91,6 +92,7 @@ export function buildGrid(turbines: ParsedTurbine[]): Grid {
   const ambientTemperature: Record<string, Float64Array> = {};
   const airPressure: Record<string, Float64Array> = {};
   const windSpeedStdDev: Record<string, Float64Array> = {};
+  const testSet: Record<string, boolean[]> = {};
 
   for (const name of turbineNames) {
     const ws = new Float64Array(nRows);
@@ -110,6 +112,7 @@ export function buildGrid(turbines: ParsedTurbine[]): Grid {
     ambientTemperature[name] = temp;
     airPressure[name] = press;
     windSpeedStdDev[name] = std;
+    testSet[name] = new Array<boolean>(nRows).fill(false);
   }
 
   // Populate data
@@ -128,6 +131,9 @@ export function buildGrid(turbines: ParsedTurbine[]): Grid {
         tempArr[idx] = r.ambientTemperature;
         pressArr[idx] = r.airPressure;
         stdArr[idx] = r.windSpeedStdDev;
+        if (r.testSet) {
+          testSet[t.turbineName][idx] = true;
+        }
       }
     }
   }
@@ -145,5 +151,6 @@ export function buildGrid(turbines: ParsedTurbine[]): Grid {
     ambientTemperature,
     airPressure,
     windSpeedStdDev,
+    testSet,
   };
 }

@@ -22,9 +22,12 @@ import { EngineResult } from '../../engine';
 import {
   generatePredictionsCSV,
   generatePredictionsWideCSV,
+  generateBayWaFormatPredictionsCSV,
   generateFullPeriodCSV,
   generateSummaryCSV,
   generateJudgesPredictionsCSV,
+  generateTestMetricsCSV,
+  formatTestPeriodSummary,
   generateClaimEmail,
   downloadFile,
 } from '../../utils/export';
@@ -95,7 +98,15 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
     return data;
   }, [report]);
 
-  // Handlers for the 4 downloads
+  const handleDownloadBayWaFormat = () => {
+    const csv = generateBayWaFormatPredictionsCSV(result);
+    downloadFile(
+      csv,
+      `predictions_BayWa_format_Park_${report.targetPark}${densitySuffix}.csv`,
+      'text/csv;charset=utf-8'
+    );
+  };
+
   const handleDownloadPredictionsPerTurbine = () => {
     const csv = generatePredictionsCSV(result);
     downloadFile(
@@ -149,6 +160,15 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
     } finally {
       setIsDownloadingJudges(false);
     }
+  };
+
+  const handleDownloadTestMetrics = () => {
+    const csv = generateTestMetricsCSV(result);
+    downloadFile(
+      csv,
+      `test_metrics_Park_${report.targetPark}.csv`,
+      'text/csv;charset=utf-8'
+    );
   };
 
   const handlePrint = () => {
@@ -371,8 +391,13 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
       {/* 4. Measured accuracy */}
       <section className="break-inside-avoid space-y-2">
         <h3 className="font-bold text-sm text-slate-900 uppercase tracking-wider">
-          4. Measured Accuracy on Backtest Windows
+          4. Validation &amp; Test Period Accuracy
         </h3>
+        {formatTestPeriodSummary(result) && (
+          <p className="text-xs font-semibold text-slate-800 bg-amber-50 border border-amber-200 p-2.5 rounded-lg font-sans">
+            {formatTestPeriodSummary(result)}
+          </p>
+        )}
         <div className="overflow-x-auto border border-slate-200 rounded-xl">
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
@@ -466,8 +491,38 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
         </button>
       </div>
 
-      {/* 4 CSV Export Cards */}
+      {/* CSV Export Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Card 0: Official BayWa Format with SUBMIT THIS FILE badge */}
+        <div className="bg-white dark:bg-slate-900 border-2 border-amber-500 dark:border-amber-500 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4 sm:col-span-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-white uppercase tracking-wider shadow-xs">
+                SUBMIT THIS FILE
+              </span>
+            </div>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+              Official BayWa Format: predictions_BayWa_format_Park_{report.targetPark}{densitySuffix}.csv
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              {outage.stampsCount.toLocaleString('en-US')} rows (one row per 10-minute outage stamp). Reconstructed wind per turbine, sum of park power in kW, and integrated park energy in kWh.
+            </p>
+            <div className="text-[11px] font-mono bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg text-slate-700 dark:text-slate-200 overflow-x-auto border border-slate-200 dark:border-slate-700">
+              timestamp,{report.targetTurbines.map((t) => `${t}_wind_speed_ms`).join(',')},park_power_kw,park_energy_kwh
+            </div>
+          </div>
+          <button
+            onClick={handleDownloadBayWaFormat}
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-xs cursor-pointer transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download BayWa Format File (predictions_BayWa_format_Park_{report.targetPark}.csv)</span>
+          </button>
+        </div>
+
         {/* Card 1: Predictions (outage, per turbine) */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
           <div className="space-y-2">
@@ -475,15 +530,15 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
               <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 uppercase">
-                Submit this file
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 uppercase">
+                Per-Turbine
               </span>
             </div>
             <h3 className="font-bold text-sm text-slate-900 dark:text-white">
               Predictions (outage, per turbine)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              {outage.stampsCount.toLocaleString('en-US')} stamps &times; {report.targetTurbines.length} turbines = {(outage.stampsCount * report.targetTurbines.length).toLocaleString('en-US')} rows. This is the file to submit.
+              {outage.stampsCount.toLocaleString('en-US')} stamps &times; {report.targetTurbines.length} turbines = {(outage.stampsCount * report.targetTurbines.length).toLocaleString('en-US')} rows. Tall format with each turbine and timestamp.
             </p>
             <div className="text-[11px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded text-slate-600 dark:text-slate-300 overflow-x-auto">
               timestamp, turbine, wind_speed_pred, power_pred_kw
@@ -601,6 +656,36 @@ export const Step9Downloads: React.FC<Step9DownloadsProps> = ({ result }) => {
           >
             <Download className="w-4 h-4" />
             <span>{isDownloadingJudges ? 'Downloading files...' : 'Download per-turbine files'}</span>
+          </button>
+        </div>
+
+        {/* Card 6: Test period evaluation metrics (test_metrics_Park_{T}.csv) */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 uppercase">
+                Official Protocol
+              </span>
+            </div>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+              Test period metrics (test_metrics_Park_{report.targetPark}.csv)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Official scoring metrics on post-outage test period: n, RMSE, MAE, bias, correlation r, measured energy, predicted energy, and deviation %.
+            </p>
+            <div className="text-[11px] font-mono bg-slate-50 dark:bg-slate-800 p-2 rounded text-slate-600 dark:text-slate-300 overflow-x-auto">
+              turbine,n,wind_rmse_ms,wind_mae_ms,wind_bias_ms,r,power_rmse_kw,power_mae_kw,energy_dev_pct...
+            </div>
+          </div>
+          <button
+            onClick={handleDownloadTestMetrics}
+            className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 shadow-xs cursor-pointer transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download Test Period Metrics</span>
           </button>
         </div>
       </div>

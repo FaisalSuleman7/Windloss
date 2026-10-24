@@ -77,6 +77,17 @@ export const GuidedTour: React.FC<GuidedTourProps> = ({
   hasData,
 }) => {
   const step = TOUR_STEPS[currentStepIndex];
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onSkip();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSkip]);
+
   if (!step) return null;
 
   const progressPercent = ((currentStepIndex + 1) / TOUR_STEPS.length) * 100;

@@ -52,9 +52,7 @@ export const AboutTeamView: React.FC<AboutTeamViewProps> = ({ onBackToSteps }) =
           </h2>
         </div>
         <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
-          The Wind Outage Loss Estimator accurately determines electricity generation lost during wind park outages for business-interruption insurance claims.
-          It reconstructs the 10-minute wind speed at each affected turbine using directional relationships learned from operating neighbouring reference parks, converting the reconstructed wind into expected power with manufacturer power curves.
-          The entire computation runs 100 % locally in your web browser with zero data uploaded to any server, guaranteeing absolute confidentiality and instant results.
+          When a wind park is offline, its own wind sensors are offline too, so the energy it could have produced is unknown. This tool rebuilds the 10-minute wind at each affected turbine from neighbouring parks that kept running, using a relation learned from data before the outage, and converts it to power with each turbine's power curve. It gives the lost energy in kWh with an honest 80 % range, and everything runs in your browser - no data is sent to any server.
         </p>
       </section>
 

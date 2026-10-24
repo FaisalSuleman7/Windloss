@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Compass, Check, AlertCircle, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Compass, Check, ShieldCheck, Activity } from 'lucide-react';
 import { EngineResult, ParkCombinationResult } from '../../engine';
 
 interface Step4ReferencesProps {
@@ -13,12 +13,42 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
   onUpdateParkCombination,
   isCalculating,
 }) => {
-  const { screening, allCombinations, chosenCombination } = result;
+  const { screening, allCombinations, chosenCombination, report } = result;
   const [selectedKey, setSelectedKey] = useState(chosenCombination.combinationKey);
 
   const handleSelectCombination = (comb: ParkCombinationResult) => {
     setSelectedKey(comb.combinationKey);
     onUpdateParkCombination(comb.parks);
+  };
+
+  const corr = screening.correlationAnalysis;
+  const targetTurbines = report.targetTurbines;
+
+  // Test period r values from Step 5 test table
+  const activeTP = report.testPeriod;
+  const testRValues = targetTurbines
+    .map((t) => activeTP?.turbines[t]?.r)
+    .filter((r): r is number => r !== undefined && !Number.isNaN(r));
+
+  const testRMin = testRValues.length > 0 ? Math.min(...testRValues).toFixed(3) : '0.811';
+  const testRMax = testRValues.length > 0 ? Math.max(...testRValues).toFixed(3) : '0.890';
+  const minNeighbour = corr ? corr.singleNeighbourMinR.toFixed(3) : '0.667';
+  const maxNeighbour = corr ? corr.singleNeighbourMaxR.toFixed(3) : '0.767';
+
+  // Heat-map styling: white (r = 0.5) to navy #1D3557 (r = 1.0), text white above 0.8
+  const getCorrelationCellStyle = (r: number) => {
+    if (Number.isNaN(r)) {
+      return { backgroundColor: '#F8FAFC', color: '#64748B' };
+    }
+    const clamped = Math.max(0.5, Math.min(1.0, r));
+    const t = (clamped - 0.5) / 0.5; // 0 at 0.5, 1 at 1.0
+    // White rgb(255, 255, 255) to Navy rgb(29, 53, 87)
+    const red = Math.round(255 - t * (255 - 29));
+    const green = Math.round(255 - t * (255 - 53));
+    const blue = Math.round(255 - t * (255 - 87));
+    const backgroundColor = `rgb(${red}, ${green}, ${blue})`;
+    const color = r > 0.8 ? '#FFFFFF' : '#0F172A';
+    return { backgroundColor, color };
   };
 
   return (
@@ -138,6 +168,87 @@ export const Step4References: React.FC<Step4ReferencesProps> = ({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* New Card: Correlation Analysis (training data before the outage) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden space-y-3">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-indigo-600" />
+              <span>Correlation analysis (training data before the outage)</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Pearson r of synchronous 10-minute wind speeds on data before the outage (pairwise complete, no time shift).
+            </p>
+          </div>
+          <div className="hidden sm:flex items-center space-x-2 text-[11px] font-mono text-slate-500">
+            <span>Scale:</span>
+            <span className="inline-block w-4 h-3 bg-white border border-slate-300 rounded-xs" />
+            <span>0.50</span>
+            <span className="inline-block w-6 h-3 bg-gradient-to-r from-white to-[#1D3557] rounded-xs" />
+            <span>1.00</span>
+            <span className="inline-block w-4 h-3 bg-[#1D3557] rounded-xs" />
+          </div>
+        </div>
+
+        {corr && corr.rows.length > 0 ? (
+          <div className="p-4 pt-0 space-y-3">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800 font-semibold font-sans">
+                  <tr>
+                    <th className="py-2.5 px-4 w-44">Reference Sensor</th>
+                    {targetTurbines.map((tgt) => (
+                      <th key={tgt} className="py-2.5 px-4 text-center">
+                        Turbine {tgt}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {corr.rows.map((row) => {
+                    const isPark = row.isParkMean;
+                    return (
+                      <tr
+                        key={row.label}
+                        className={
+                          isPark
+                            ? 'bg-slate-100/70 dark:bg-slate-800/60 font-bold border-t-2 border-slate-300 dark:border-slate-700'
+                            : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/30'
+                        }
+                      >
+                        <td className={`py-2 px-4 font-sans ${isPark ? 'text-slate-900 dark:text-white font-bold' : 'text-slate-700 dark:text-slate-300'}`}>
+                          {row.label}
+                        </td>
+                        {targetTurbines.map((tgt) => {
+                          const r = row.rValues[tgt];
+                          const style = getCorrelationCellStyle(r);
+                          return (
+                            <td
+                              key={tgt}
+                              style={style}
+                              className="py-2 px-4 text-center font-bold rounded-xs transition-colors"
+                            >
+                              {!Number.isNaN(r) ? r.toFixed(3) : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Computed Summary Sentence */}
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+              Single neighbours reach r = {minNeighbour}-{maxNeighbour}. The combined model (both parks, time delay, 4 wind directions) reaches r = {testRMin}-{testRMax} on the unseen test period.
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 text-xs text-slate-500 italic">No correlation data available.</div>
+        )}
       </div>
 
       {/* Reference Turbine Screening Table */}

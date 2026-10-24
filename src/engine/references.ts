@@ -21,6 +21,20 @@ export interface DirectionSectorResult {
   oneSectorForAllDirections: boolean;
 }
 
+export interface CorrelationRow {
+  label: string;
+  isParkMean: boolean;
+  park: string;
+  rValues: Record<string, number>;
+}
+
+export interface CorrelationAnalysisResult {
+  targetTurbines: string[];
+  rows: CorrelationRow[];
+  singleNeighbourMinR: number;
+  singleNeighbourMaxR: number;
+}
+
 export interface ReferenceScreeningResult {
   screenings: TurbineScreening[];
   usedTurbines: string[];
@@ -28,6 +42,7 @@ export interface ReferenceScreeningResult {
   parkMeans: Record<string, Float64Array>;
   targetParkMean: Float64Array;
   directionResult: DirectionSectorResult;
+  correlationAnalysis: CorrelationAnalysisResult;
 }
 
 /**
@@ -194,6 +209,15 @@ export function screenReferenceTurbines(
     referenceDirections.fill(NaN);
   }
 
+  // Correlation analysis on training data before outage (0 <= t < startIndex)
+  const correlationAnalysis = computeCorrelationAnalysis(
+    grid,
+    outage,
+    usedTurbines,
+    usedParks,
+    parkMeans
+  );
+
   return {
     screenings,
     usedTurbines,
@@ -206,5 +230,99 @@ export function screenReferenceTurbines(
       referenceDirections,
       oneSectorForAllDirections: !hasDirections,
     },
+    correlationAnalysis,
+  };
+}
+
+/**
+ * Computes Pearson r correlation analysis for each reference turbine and reference park mean
+ * against each target turbine on the training data before the outage.
+ */
+export function computeCorrelationAnalysis(
+  grid: Grid,
+  outage: OutageInfo,
+  usedTurbines: string[],
+  usedParks: string[],
+  parkMeans: Record<string, Float64Array>
+): CorrelationAnalysisResult {
+  const { windSpeed, turbineParkMap } = grid;
+  const { startIndex, targetTurbines } = outage;
+
+  const rows: CorrelationRow[] = [];
+  let singleNeighbourMinR = Infinity;
+  let singleNeighbourMaxR = -Infinity;
+
+  // 1. Every reference turbine
+  for (const ref of usedTurbines) {
+    const park = turbineParkMap[ref] || '';
+    const rValues: Record<string, number> = {};
+    const refSeries = windSpeed[ref];
+
+    for (const tgt of targetTurbines) {
+      const tgtSeries = windSpeed[tgt];
+      const xVals: number[] = [];
+      const yVals: number[] = [];
+
+      for (let t = 0; t < startIndex; t++) {
+        const xr = refSeries ? refSeries[t] : NaN;
+        const yt = tgtSeries ? tgtSeries[t] : NaN;
+        if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
+          xVals.push(xr);
+          yVals.push(yt);
+        }
+      }
+
+      const r = pearsonCorrelation(xVals, yVals);
+      rValues[tgt] = r;
+      if (!Number.isNaN(r)) {
+        if (r < singleNeighbourMinR) singleNeighbourMinR = r;
+        if (r > singleNeighbourMaxR) singleNeighbourMaxR = r;
+      }
+    }
+
+    rows.push({
+      label: ref,
+      isParkMean: false,
+      park,
+      rValues,
+    });
+  }
+
+  // 2. One row per reference park mean ("Park H mean", "Park O mean")
+  for (const p of usedParks) {
+    const meanSeries = parkMeans[p];
+    const rValues: Record<string, number> = {};
+
+    for (const tgt of targetTurbines) {
+      const tgtSeries = windSpeed[tgt];
+      const xVals: number[] = [];
+      const yVals: number[] = [];
+
+      for (let t = 0; t < startIndex; t++) {
+        const xr = meanSeries ? meanSeries[t] : NaN;
+        const yt = tgtSeries ? tgtSeries[t] : NaN;
+        if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
+          xVals.push(xr);
+          yVals.push(yt);
+        }
+      }
+
+      const r = pearsonCorrelation(xVals, yVals);
+      rValues[tgt] = r;
+    }
+
+    rows.push({
+      label: `Park ${p} mean`,
+      isParkMean: true,
+      park: p,
+      rValues,
+    });
+  }
+
+  return {
+    targetTurbines,
+    rows,
+    singleNeighbourMinR: singleNeighbourMinR === Infinity ? 0 : singleNeighbourMinR,
+    singleNeighbourMaxR: singleNeighbourMaxR === -Infinity ? 0 : singleNeighbourMaxR,
   };
 }

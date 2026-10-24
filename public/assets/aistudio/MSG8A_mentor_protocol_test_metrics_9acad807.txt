@@ -1,0 +1,45 @@
+The BayWa mentors gave us the official evaluation protocol. Please implement it. Do NOT change the regression, lag search, sector blending, power integration or uncertainty code - the engine is already correct (I verified "Data before outage only" against Python: 316,118 kWh, H+O 8.98 %, 16 windows). Only the default, a new test evaluation, and the display change.
+
+OFFICIAL PROTOCOL (show it like this):
+  [ Training + Validation : all data BEFORE the outage ] [ Blind test = outage : predict, calculate energy loss ] [ Test : data AFTER the outage : RMSE & MAE ]
+
+1. DEFAULT TRAINING = "Data before outage only"
+- In Step 3 make "Data before outage only" the default and rename it "Before the outage (official protocol - default)". Rename "All measured data" to "All measured data outside the outage (not for evaluation)".
+- Add above the two options a small horizontal timeline bar with three coloured zones and dates from the current data and outage:
+  grey "Training + validation" (data start -> outage start), pink #CC79A7 "Blind test (outage)" (outage start -> end), amber #E69F00 "Test" (test period, see 2). Below it one sentence: "The model learns only from the grey part, is checked inside it with backtest windows, predicts the pink part, and is scored on the amber part it has never seen."
+
+2. TEST PERIOD (after the outage)
+- Read the optional column test_set from the turbine files (values true/false, True/False, 1/0, yes/no; case-insensitive). Missing column = no flags.
+- Test period = all 10-minute stamps AFTER the outage end that are flagged test_set = true in the target turbine files. If no stamp after the outage is flagged, use all stamps after the outage end.
+- Add a switch in Step 5: "Test period: flagged test days | all data after the outage" (default flagged test days if available). Show the dates and number of stamps.
+- Use the SAME fitted model as for the outage (trained on data before the outage), predict the target wind on the test stamps from the reference parks exactly like during the outage, and compute the predicted power exactly like during the outage (same expected-power integration, standard density).
+- Real power on the test stamps = power curve applied to the MEASURED wind (standard density). Use only stamps where measured wind and prediction both exist.
+- Metrics per turbine: n, wind RMSE, wind MAE, wind bias (mean of predicted - measured), correlation r (predicted vs measured wind), power RMSE, power MAE, measured energy kWh (sum real power / 6), predicted energy kWh, energy deviation % = 100*(predicted/measured - 1). Park row: summed measured and predicted energy and the deviation.
+- If the user switches training to "All measured data", the test data was used for training: show the table greyed with the warning "Not a fair test - the test data was used for training. Switch to 'Before the outage'."
+
+3. STEP 5 LAYOUT
+- New first card: "Accuracy on the test period (after the outage)" with the table above (wind in m/s 2 decimals, power kW 0 decimals, r 3 decimals, energy kWh 0 decimals, deviation 1 decimal).
+- Below it a chart "Predicted vs measured wind on the test period" with a turbine selector (T1/T2/T3): measured wind as a solid line in the park colour, predicted as a dashed navy #1D3557 line; plus a scatter (predicted vs measured, 1:1 line) for the same turbine.
+- Rename the existing backtest card to "Validation inside the training data (backtest windows)" and keep it.
+- Step 8 e-mail, the audit report (Step 9 print) and summary CSV: add one sentence/line with the test-period result: "On the test period after the outage (dates, n stamps) the predicted wind had RMSE x.xx m/s and MAE x.xx m/s; the predicted energy deviated by +x.x % from the measured energy (park)."
+- Add an export in Step 9: test_metrics_Park_{T}.csv with columns turbine,n,wind_rmse_ms,wind_mae_ms,wind_bias_ms,r,power_rmse_kw,power_mae_kw,energy_measured_kwh,energy_predicted_kwh,energy_dev_pct (+ park row) and test_period_start,test_period_end.
+
+4. SELF-TEST
+- Keep the existing 29 checks unchanged but run them with training = "All measured data" explicitly (they are the engine reference) and label the section "A. Engine reference (all data outside outage)".
+- Add section "B. Official protocol (training before outage)" with these checks on the 13 demo files (tolerance in brackets):
+  Park energy 316,117.7 kWh (0.1 %) | T1 91,454.2 | T2 124,805.6 | T3 99,857.9 (0.1 %)
+  Park 80 % range 273,684 - 360,428 kWh (0.5 %)
+  Backtest windows 16 (exact) | chosen H+O, score 8.98 % ; O 10.60 % ; H 10.74 % (0.05 %)
+  Lags T1 H:-3 O:0 | T2 H:-3 O:1 | T3 H:-3 O:1 (exact)
+  sigma_global T1 1.2999 | T2 1.1768 | T3 1.1630 (0.001)
+  T1 predicted wind stamps 0,1,2: 8.0791, 8.2097, 7.9612 (0.001)
+  Density sensitivity -2.00 % (0.05)
+  Test period (flagged, 2026-09-04 00:00 - 2026-09-09 23:50, 864 stamps per turbine):
+   T1 wind RMSE 1.5197 MAE 1.2001 r 0.8112 power RMSE 915.67 MAE 691.18 energy dev +11.50 %
+   T2 wind RMSE 1.2335 MAE 0.9219 r 0.8897 power RMSE 750.80 MAE 529.63 energy dev -1.93 %
+   T3 wind RMSE 1.3256 MAE 0.9985 r 0.8496 power RMSE 842.73 MAE 604.31 energy dev -5.29 %
+   Park energy measured 797,057 kWh, predicted 801,166 kWh, dev +0.52 %
+   (tolerance: wind 0.002, r 0.002, power 0.2 %, energy dev 0.05 points)
+  Test period "all data after the outage" (2026-09-04 00:00 - 2026-09-30 23:50): T1 RMSE 1.3254 MAE 1.0052 ; T2 1.1021 / 0.8539 ; T3 1.1585 / 0.8974 ; park energy dev -2.23 %.
+
+CHECK after the change: Start the demo without touching anything -> Step 7 shows 316,118 kWh (range 273,684 - 360,428); Step 5 test table shows the T1 row 1.52 / 1.20 / r 0.811 / 916 / 691 / +11.5 %; Self-test A 29/29 and B all green.

@@ -209,49 +209,98 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
         </div>
       </div>
 
-      {/* Training Data Option Radio Cards */}
+      {/* Training Data Option Radio Cards & Official Protocol Timeline */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
         <div>
-          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-            Training Data Selection
+          <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+            <span>Official Evaluation Protocol</span>
+          </div>
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm mt-0.5">
+            Training Data Selection &amp; Evaluation Protocol
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Select which historical data periods are utilized to fit model coefficients.
+            The BayWa evaluation protocol separates training, blind outage prediction, and post-outage scoring.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Option 1 */}
-          <div
-            onClick={() => handleTrainingChange('all_measured')}
-            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
-              activeTraining === 'all_measured'
-                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
-                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm text-slate-900 dark:text-white">
-                All measured data
-              </span>
-              <div
-                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                  activeTraining === 'all_measured'
-                    ? 'border-blue-600 bg-blue-600'
-                    : 'border-slate-400'
-                }`}
-              >
-                {activeTraining === 'all_measured' && (
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                )}
-              </div>
+        {/* Official Protocol Badges */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-semibold">
+          <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0" />
+            <span className="leading-tight">Training + Validation: all data BEFORE outage</span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900/60 text-pink-900 dark:text-pink-300 flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#CC79A7] shrink-0" />
+            <span className="leading-tight">Blind test = outage: predict, calculate energy loss</span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-900 dark:text-amber-300 flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#E69F00] shrink-0" />
+            <span className="leading-tight">Test: data AFTER the outage : RMSE &amp; MAE</span>
+          </div>
+        </div>
+
+        {/* Horizontal Timeline Bar with 3 Colored Zones */}
+        <div className="space-y-2 pt-1">
+          <div className="w-full h-8 rounded-xl overflow-hidden flex text-[11px] font-bold text-white shadow-xs">
+            {/* Zone 1: Grey Training + Validation */}
+            <div
+              className="bg-slate-500 dark:bg-slate-600 flex items-center justify-center px-2 truncate transition-all"
+              style={{ flex: Math.max(outage.startIndex, 100) }}
+              title={`Training + validation: ${grid.dateStrings[0]} -> ${outage.startDateStr}`}
+            >
+              <span className="truncate">Training + validation</span>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Default. Maximum statistical power across all non-outage periods.
-            </p>
+            {/* Zone 2: Pink #CC79A7 Blind test (outage) */}
+            <div
+              className="flex items-center justify-center px-2 truncate transition-all text-slate-900 font-extrabold"
+              style={{
+                flex: Math.max(outage.stampsCount, 80),
+                backgroundColor: '#CC79A7',
+              }}
+              title={`Blind test (outage): ${outage.startDateStr} -> ${outage.endDateStr}`}
+            >
+              <span className="truncate">Blind test (outage)</span>
+            </div>
+            {/* Zone 3: Amber #E69F00 Test */}
+            <div
+              className="flex items-center justify-center px-2 truncate transition-all text-slate-900 font-extrabold"
+              style={{
+                flex: Math.max(grid.nRows - outage.endIndex - 1, 80),
+                backgroundColor: '#E69F00',
+              }}
+              title={`Test: ${result.testPeriod?.startDateStr || outage.endDateStr} -> ${result.testPeriod?.endDateStr || grid.dateStrings[grid.nRows - 1]}`}
+            >
+              <span className="truncate">Test</span>
+            </div>
           </div>
 
-          {/* Option 2 */}
+          {/* Date ranges below timeline */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400 px-1 text-center sm:text-left">
+            <div>
+              <span className="text-slate-400 dark:text-slate-500">Train: </span>
+              <span>{grid.dateStrings[0]} &rarr; {outage.startDateStr}</span>
+            </div>
+            <div className="sm:text-center">
+              <span className="text-pink-600 dark:text-pink-400 font-semibold">Outage: </span>
+              <span>{outage.startDateStr} &rarr; {outage.endDateStr}</span>
+            </div>
+            <div className="sm:text-right">
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">Test: </span>
+              <span>
+                {result.testPeriod?.startDateStr || outage.endDateStr} &rarr;{' '}
+                {result.testPeriod?.endDateStr || grid.dateStrings[grid.nRows - 1]}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-600 dark:text-slate-400 italic pt-0.5">
+            The model learns only from the grey part, is checked inside it with backtest windows, predicts the pink part, and is scored on the amber part it has never seen.
+          </p>
+        </div>
+
+        {/* 2 Radio Option Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          {/* Option 1: Before the outage (official protocol - default) */}
           <div
             onClick={() => handleTrainingChange('before_outage')}
             className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
@@ -262,10 +311,10 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="font-bold text-sm text-slate-900 dark:text-white">
-                Data before outage only
+                Before the outage (official protocol - default)
               </span>
               <div
-                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
                   activeTraining === 'before_outage'
                     ? 'border-blue-600 bg-blue-600'
                     : 'border-slate-400'
@@ -277,7 +326,37 @@ export const Step3Outage: React.FC<Step3OutageProps> = ({
               </div>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Uses only measured timestamps strictly preceding the detected outage interval.
+              Default. Strict official protocol: model trains strictly prior to the outage, evaluated blindly on test period after outage.
+            </p>
+          </div>
+
+          {/* Option 2: All measured data outside the outage */}
+          <div
+            onClick={() => handleTrainingChange('all_measured')}
+            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+              activeTraining === 'all_measured'
+                ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
+                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                All measured data outside the outage (not for evaluation)
+              </span>
+              <div
+                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ml-2 ${
+                  activeTraining === 'all_measured'
+                    ? 'border-blue-600 bg-blue-600'
+                    : 'border-slate-400'
+                }`}
+              >
+                {activeTraining === 'all_measured' && (
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Uses all non-outage data across the full timeframe for training. Test period after outage is not independent in this mode.
             </p>
           </div>
         </div>

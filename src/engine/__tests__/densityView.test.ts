@@ -59,6 +59,12 @@ describe('Air Density View and Exports', () => {
         referenceDirections: new Float64Array(0),
         oneSectorForAllDirections: false,
       },
+      correlationAnalysis: {
+        targetTurbines: ['T1'],
+        rows: [],
+        singleNeighbourMinR: 0,
+        singleNeighbourMaxR: 0,
+      },
     },
     allCombinations: [],
     chosenCombination: {

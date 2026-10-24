@@ -46,7 +46,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
               Deterministic loss reconstruction for business-interruption claims
             </p>
           </div>

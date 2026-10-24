@@ -60,11 +60,15 @@ export function applyDensityView(
     parkEnergyKWh: airDensity.correctedParkEnergyKWh ?? report.parkEnergyKWh,
     parkRange80LowerKWh: airDensity.correctedParkRange80LowerKWh ?? report.parkRange80LowerKWh,
     parkRange80UpperKWh: airDensity.correctedParkRange80UpperKWh ?? report.parkRange80UpperKWh,
+    testPeriod: report.testPeriod,
+    testPeriodAll: report.testPeriodAll,
   };
 
   return {
     ...result,
     report: copiedReport,
+    testPeriod: result.testPeriod,
+    testPeriodAll: result.testPeriodAll,
     densityApplied: true,
     base: result,
   };

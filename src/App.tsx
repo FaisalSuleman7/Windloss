@@ -45,7 +45,7 @@ export default function App() {
   const [isDemoActive, setIsDemoActive] = useState<boolean>(false);
   const [showDemoDropModal, setShowDemoDropModal] = useState<boolean>(false);
   const [cachedRawFiles, setCachedRawFiles] = useState<{ name: string; content: string | ArrayBuffer }[]>([]);
-  const [trainingOption, setTrainingOption] = useState<TrainingDataOption>('all_measured');
+  const [trainingOption, setTrainingOption] = useState<TrainingDataOption>('before_outage');
   const [useDensity, setUseDensity] = useState<boolean>(false);
 
   // Guided tour state

@@ -2,25 +2,24 @@ import React, { useState } from 'react';
 import {
   CheckCircle2,
   XCircle,
-  Play,
-  RotateCcw,
   ShieldCheck,
   AlertCircle,
   FileCheck2,
   Cpu,
+  Award,
   Layers,
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
 import {
   EngineResult,
   runSelfTestChecks,
+  runOfficialProtocolChecks,
   SelfTestCheckItem,
   runLossEstimation,
   parseRawFiles,
   ParsedTurbine,
   PowerCurve,
 } from '../engine';
-import { formatTimestamp } from '../engine/grid';
 
 export const SelfTestView: React.FC = () => {
   const [cachedFiles, setCachedFiles] = useState<{ name: string; content: string | ArrayBuffer }[]>(
@@ -29,8 +28,10 @@ export const SelfTestView: React.FC = () => {
   const [isComputing, setIsComputing] = useState(false);
   const [progressMsg, setProgressMsg] = useState<string>('');
   const [progressPct, setProgressPct] = useState<number>(0);
-  const [engineResult, setEngineResult] = useState<EngineResult | null>(null);
-  const [checkItems, setCheckItems] = useState<SelfTestCheckItem[]>([]);
+  const [engineResultA, setEngineResultA] = useState<EngineResult | null>(null);
+  const [engineResultB, setEngineResultB] = useState<EngineResult | null>(null);
+  const [checkItemsA, setCheckItemsA] = useState<SelfTestCheckItem[]>([]);
+  const [checkItemsB, setCheckItemsB] = useState<SelfTestCheckItem[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Robustness test states
@@ -54,22 +55,42 @@ export const SelfTestView: React.FC = () => {
           throw new Error(errors.join('\n'));
         }
 
-        setProgressMsg('Running loss estimation engine with default settings...');
-        setProgressPct(40);
+        // Run Section A: Engine reference with "all_measured" data
+        setProgressMsg('Running Section A: Engine reference (all measured data outside outage)...');
+        setProgressPct(25);
 
-        const res = runLossEstimation(
+        const resA = runLossEstimation(
           turbines,
           powerCurves,
           { trainingOption: 'all_measured' },
           (stage, pct, detail) => {
-            setProgressMsg(detail);
-            setProgressPct(pct);
+            setProgressMsg(`[A: Engine Reference] ${detail}`);
+            setProgressPct(Math.round(20 + pct * 0.35));
           }
         );
 
-        setEngineResult(res);
-        const checks = runSelfTestChecks(res);
-        setCheckItems(checks);
+        // Run Section B: Official protocol with "before_outage" data
+        setProgressMsg('Running Section B: Official protocol (training before outage)...');
+        setProgressPct(60);
+
+        const resB = runLossEstimation(
+          turbines,
+          powerCurves,
+          { trainingOption: 'before_outage' },
+          (stage, pct, detail) => {
+            setProgressMsg(`[B: Official Protocol] ${detail}`);
+            setProgressPct(Math.round(60 + pct * 0.35));
+          }
+        );
+
+        setEngineResultA(resA);
+        setEngineResultB(resB);
+
+        const checksA = runSelfTestChecks(resA);
+        const checksB = runOfficialProtocolChecks(resB);
+
+        setCheckItemsA(checksA);
+        setCheckItemsB(checksB);
         setIsComputing(false);
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : String(err));
@@ -80,7 +101,7 @@ export const SelfTestView: React.FC = () => {
 
   // Robustness check (a): Demo without direction columns -> runs and shows one sector
   const runRobustnessA = () => {
-    if (!engineResult) return;
+    if (!engineResultA && !engineResultB) return;
     try {
       setRobustnessAResult('Running calculation without wind direction columns...');
       const { turbines, powerCurves } = parseRawFiles(cachedFiles);
@@ -92,7 +113,7 @@ export const SelfTestView: React.FC = () => {
       }));
 
       const res = runLossEstimation(strippedTurbines, powerCurves, {
-        trainingOption: 'all_measured',
+        trainingOption: 'before_outage',
       });
 
       const hasOneSector = res.screening.directionResult.oneSectorForAllDirections;
@@ -108,19 +129,20 @@ export const SelfTestView: React.FC = () => {
 
   // Robustness check (b): Outage start moved by +6 h manually -> re-runs without errors
   const runRobustnessB = () => {
-    if (!engineResult) return;
+    const activeRes = engineResultB || engineResultA;
+    if (!activeRes) return;
     try {
       setRobustnessBResult('Re-running calculation with outage start shifted by +6h...');
       const { turbines, powerCurves } = parseRawFiles(cachedFiles);
 
       // Shift start by +36 stamps (6 hours)
-      const newStartIdx = engineResult.outage.startIndex + 36;
+      const newStartIdx = activeRes.outage.startIndex + 36;
       const res = runLossEstimation(turbines, powerCurves, {
-        trainingOption: 'all_measured',
+        trainingOption: 'before_outage',
         manualOutage: {
-          targetPark: engineResult.outage.targetPark,
+          targetPark: activeRes.outage.targetPark,
           startIndex: newStartIdx,
-          endIndex: engineResult.outage.endIndex,
+          endIndex: activeRes.outage.endIndex,
         },
       });
 
@@ -138,7 +160,7 @@ export const SelfTestView: React.FC = () => {
 
   // Robustness check (c): Semicolon-separated files with decimal commas, German dates, renamed parks (A=target, B, C=ref)
   const runRobustnessC = () => {
-    if (!engineResult) return;
+    if (!engineResultA && !engineResultB) return;
     try {
       setRobustnessCResult('Synthesizing European semicolon, decimal comma, and renamed parks A/B/C...');
       const { turbines, powerCurves } = parseRawFiles(cachedFiles);
@@ -170,7 +192,7 @@ export const SelfTestView: React.FC = () => {
       });
 
       const res = runLossEstimation(renamedTurbines, renamedPowerCurves, {
-        trainingOption: 'all_measured',
+        trainingOption: 'before_outage',
       });
 
       setRobustnessCResult(
@@ -178,21 +200,104 @@ export const SelfTestView: React.FC = () => {
           ', '
         )}). Park lost energy: ${Math.round(res.report.parkEnergyKWh).toLocaleString(
           'en-US'
-        )} kWh (matches baseline).`
+        )} kWh.`
       );
     } catch (e: unknown) {
       setRobustnessCResult(`Failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
-  const passedCount = checkItems.filter((c) => c.passed).length;
-  const totalCount = checkItems.length;
+  const passedCountA = checkItemsA.filter((c) => c.passed).length;
+  const totalCountA = checkItemsA.length;
+  const passedCountB = checkItemsB.filter((c) => c.passed).length;
+  const totalCountB = checkItemsB.length;
+  const totalPassed = passedCountA + passedCountB;
+  const totalAll = totalCountA + totalCountB;
+
+  const renderTable = (items: SelfTestCheckItem[], title: string, subtitle: string, badgeText: string) => (
+    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <div className="flex items-center space-x-2">
+            <FileCheck2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
+              {title}
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+        </div>
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 self-start sm:self-auto">
+          {badgeText}
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+            <tr>
+              <th className="py-2.5 px-3 font-semibold text-center w-12">Result</th>
+              <th className="py-2.5 px-3 font-semibold">Category</th>
+              <th className="py-2.5 px-3 font-semibold">Metric Name</th>
+              <th className="py-2.5 px-3 font-semibold">Expected (Spec)</th>
+              <th className="py-2.5 px-3 font-semibold">Actual (Engine)</th>
+              <th className="py-2.5 px-3 font-semibold text-center">Tolerance</th>
+              <th className="py-2.5 px-3 font-semibold">Verification Details</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-700 font-mono text-xs">
+            {items.map((c) => (
+              <tr
+                key={c.id}
+                className={`hover:bg-slate-50/70 dark:hover:bg-slate-750/50 ${
+                  !c.passed ? 'bg-rose-50/40 dark:bg-rose-950/20' : ''
+                }`}
+              >
+                <td className="py-2.5 px-3 text-center">
+                  {c.passed ? (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                      ✓
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
+                      ✕
+                    </span>
+                  )}
+                </td>
+                <td className="py-2.5 px-3 font-sans text-slate-500">{c.category}</td>
+                <td className="py-2.5 px-3 font-sans font-medium text-slate-800 dark:text-slate-200">
+                  {c.name}
+                </td>
+                <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                  {c.expected}
+                </td>
+                <td
+                  className={`py-2.5 px-3 font-semibold ${
+                    c.passed
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-rose-700 dark:text-rose-400'
+                  }`}
+                >
+                  {c.actual}
+                </td>
+                <td className="py-2.5 px-3 text-center text-slate-500 font-sans">
+                  {c.tolerance || 'exact'}
+                </td>
+                <td className="py-2.5 px-3 text-slate-500 font-sans text-[11px]">
+                  {c.detail || (c.passed ? 'Within tolerance' : 'Out of tolerance')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       {/* Self-Test Banner & Drop Zone */}
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700/60 gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700/60 gap-3">
           <div>
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
@@ -201,27 +306,41 @@ export const SelfTestView: React.FC = () => {
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Verifies mathematical exactness, grid bounds, turbine screening, park lag optimization,
-              OLS regression coefficients, Hermite power integration, and uncertainty intervals against reference specifications.
+              Verifies mathematical exactness against both Section A (Engine reference on all data) and Section B (Official BayWa evaluation protocol with training before outage).
             </p>
           </div>
 
-          {totalCount > 0 && (
-            <div
-              className={`px-3 py-1.5 rounded-lg border font-medium text-sm flex items-center space-x-2 ${
-                passedCount === totalCount
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                  : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-              }`}
-            >
-              {passedCount === totalCount ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <XCircle className="w-4 h-4 text-rose-600" />
-              )}
-              <span>
-                {passedCount} / {totalCount} Reference Checks Passed
-              </span>
+          {totalAll > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`px-3 py-1.5 rounded-lg border font-medium text-xs flex items-center space-x-1.5 ${
+                  passedCountA === totalCountA
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                }`}
+              >
+                {passedCountA === totalCountA ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                )}
+                <span>A: {passedCountA}/{totalCountA}</span>
+              </div>
+
+              <div
+                className={`px-3 py-1.5 rounded-lg border font-medium text-xs flex items-center space-x-1.5 ${
+                  passedCountB === totalCountB
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                }`}
+              >
+                {passedCountB === totalCountB ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                )}
+                <span>B: {passedCountB}/{totalCountB}</span>
+              </div>
             </div>
           )}
         </div>
@@ -262,90 +381,31 @@ export const SelfTestView: React.FC = () => {
         )}
       </div>
 
-      {/* Reference Checks Table */}
-      {checkItems.length > 0 && (
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <FileCheck2 className="w-5 h-5 text-slate-500" />
-              <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-base">
-                Specification Compliance & Tolerance Checks
-              </h3>
-            </div>
-            <span className="text-xs text-slate-500">
-              Deterministic comparison against reference constants
-            </span>
-          </div>
+      {/* Section A: Engine Reference Checks */}
+      {checkItemsA.length > 0 &&
+        renderTable(
+          checkItemsA,
+          'A. Engine reference (all data outside outage)',
+          'Deterministic comparison with training on all measured data outside the outage (29 reference checks)',
+          `${passedCountA} / ${totalCountA} Passed`
+        )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="py-2.5 px-3 font-semibold text-center w-12">Result</th>
-                  <th className="py-2.5 px-3 font-semibold">Category</th>
-                  <th className="py-2.5 px-3 font-semibold">Metric Name</th>
-                  <th className="py-2.5 px-3 font-semibold">Expected (Spec)</th>
-                  <th className="py-2.5 px-3 font-semibold">Actual (Engine)</th>
-                  <th className="py-2.5 px-3 font-semibold text-center">Tolerance</th>
-                  <th className="py-2.5 px-3 font-semibold">Verification Details</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700 font-mono text-xs">
-                {checkItems.map((c) => (
-                  <tr
-                    key={c.id}
-                    className={`hover:bg-slate-50/70 dark:hover:bg-slate-750/50 ${
-                      !c.passed ? 'bg-rose-50/40 dark:bg-rose-950/20' : ''
-                    }`}
-                  >
-                    <td className="py-2.5 px-3 text-center">
-                      {c.passed ? (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
-                          ✓
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
-                          ✕
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 font-sans text-slate-500">{c.category}</td>
-                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800 dark:text-slate-200">
-                      {c.name}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium">
-                      {c.expected}
-                    </td>
-                    <td
-                      className={`py-2.5 px-3 font-semibold ${
-                        c.passed
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-rose-700 dark:text-rose-400'
-                      }`}
-                    >
-                      {c.actual}
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-slate-500 font-sans">
-                      {c.tolerance || 'exact'}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500 font-sans text-[11px]">
-                      {c.detail || (c.passed ? 'Within tolerance' : 'Out of tolerance')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Section B: Official Protocol Checks */}
+      {checkItemsB.length > 0 &&
+        renderTable(
+          checkItemsB,
+          'B. Official protocol (training before outage)',
+          'Strict BayWa benchmark: training only on data before outage, tested on post-outage test period',
+          `${passedCountB} / ${totalCountB} Passed`
+        )}
 
       {/* Robustness Checks Section */}
-      {engineResult && (
+      {(engineResultA || engineResultB) && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 dark:border-slate-700/60">
             <Cpu className="w-5 h-5 text-slate-600 dark:text-slate-400" />
             <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-base">
-              Robustness Checks (Section 4)
+              Robustness Checks
             </h3>
           </div>
 

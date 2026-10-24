@@ -8,6 +8,7 @@ import { PowerCurve } from './parse';
 import { calculateExpectedPower, STEP_H } from './power';
 import { ParkCombinationResult } from './backtest';
 import { percentile, sampleStd, mean } from './linalg';
+import { TestPeriodResult } from './testPeriod';
 
 export const R_DRY = 287.05;
 export const RHO_STD = 1.225;
@@ -57,6 +58,8 @@ export interface FinalReport {
   airDensity: AirDensityResult;
   outageDates: string[];
   outageTimestamps: Float64Array;
+  testPeriod?: TestPeriodResult;
+  testPeriodAll?: TestPeriodResult;
 }
 
 /**

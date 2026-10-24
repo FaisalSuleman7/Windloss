@@ -12,6 +12,7 @@ export interface RawTurbineRow {
   ambientTemperature: number;
   airPressure: number;
   windSpeedStdDev: number;
+  testSet?: boolean; // optional test_set flag
 }
 
 export interface ParsedTurbine {
@@ -221,6 +222,7 @@ export function parseTurbineContent(
   let pressureCol = -1;
   let stdDevCol = -1;
   let turbineNameCol = -1;
+  let testSetCol = -1;
 
   for (let c = 0; c < cleanedHeaders.length; c++) {
     const h = cleanedHeaders[c];
@@ -309,6 +311,19 @@ export function parseTurbineContent(
         turbineNameCol = c;
       }
     }
+
+    // Optional test_set flag column (values true/false, True/False, 1/0, yes/no)
+    if (testSetCol === -1) {
+      if (
+        h === 'testset' ||
+        h === 'test_set' ||
+        h === 'test' ||
+        raw.includes('test_set') ||
+        raw.includes('test set')
+      ) {
+        testSetCol = c;
+      }
+    }
   }
 
   if (timestampCol === -1) {
@@ -343,6 +358,14 @@ export function parseTurbineContent(
   let readableWindSpeeds = 0;
   const dataRowCount = table.length - 1;
 
+  const parseTestSetVal = (val: unknown): boolean => {
+    if (val === null || val === undefined) return false;
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val === 1;
+    const s = String(val).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === 'yes';
+  };
+
   // Group by floored 10-minute epoch to handle duplicates / DST averaging
   const groupedRows = new Map<
     number,
@@ -352,6 +375,7 @@ export function parseTurbineContent(
       tempList: number[];
       pressList: number[];
       stdList: number[];
+      testSet: boolean;
     }
   >();
 
@@ -377,10 +401,11 @@ export function parseTurbineContent(
     const temp = tempCol !== -1 ? parseNumber(row[tempCol]) : NaN;
     const press = pressureCol !== -1 ? parseNumber(row[pressureCol]) : NaN;
     const std = stdDevCol !== -1 ? parseNumber(row[stdDevCol]) : NaN;
+    const isTest = testSetCol !== -1 ? parseTestSetVal(row[testSetCol]) : false;
 
     let group = groupedRows.get(floored10m);
     if (!group) {
-      group = { wsList: [], wdList: [], tempList: [], pressList: [], stdList: [] };
+      group = { wsList: [], wdList: [], tempList: [], pressList: [], stdList: [], testSet: false };
       groupedRows.set(floored10m, group);
     }
 
@@ -389,6 +414,7 @@ export function parseTurbineContent(
     if (!Number.isNaN(temp)) group.tempList.push(temp);
     if (!Number.isNaN(press)) group.pressList.push(press);
     if (!Number.isNaN(std)) group.stdList.push(std);
+    if (isTest) group.testSet = true;
   }
 
   if (dataRowCount > 0 && unreadableTimestamps / dataRowCount > 0.2) {
@@ -434,6 +460,7 @@ export function parseTurbineContent(
       ambientTemperature: avgList(g.tempList),
       airPressure: avgList(g.pressList),
       windSpeedStdDev: avgList(g.stdList),
+      testSet: g.testSet,
     });
   }
 

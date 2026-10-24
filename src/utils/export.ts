@@ -114,6 +114,43 @@ export function generatePredictionsWideCSV(result: EngineResult): string {
 }
 
 /**
+ * Generates predictions CSV in the mentors' official format:
+ * timestamp,{T1}_wind_speed_ms,{T2}_wind_speed_ms...,park_power_kw,park_energy_kwh
+ */
+export function generateBayWaFormatPredictionsCSV(result: EngineResult): string {
+  const { report } = result;
+  const targets = report.targetTurbines;
+
+  const headerParts = ['timestamp', ...targets.map((t) => `${t}_wind_speed_ms`), 'park_power_kw', 'park_energy_kwh'];
+  const rows: string[] = [headerParts.join(',')];
+
+  for (let i = 0; i < report.outageDates.length; i++) {
+    const ts = report.outageDates[i];
+    let sumParkPower = 0;
+    const windCols: string[] = [];
+
+    for (const t of targets) {
+      const est = report.turbines[t];
+      const ws = est ? est.predictedWindOutage[i] : NaN;
+      const p = est ? (est.densityPowerOutage ? est.densityPowerOutage[i] : est.expectedPowerOutage[i]) : NaN;
+
+      const wsVal = Number.isNaN(ws) ? 0 : ws;
+      const pVal = Number.isNaN(p) ? 0 : p;
+
+      windCols.push(wsVal.toFixed(4));
+      sumParkPower += pVal;
+    }
+
+    const parkPowerKw = sumParkPower.toFixed(2);
+    const parkEnergyKwh = (sumParkPower / 6).toFixed(3);
+
+    rows.push([ts, ...windCols, parkPowerKw, parkEnergyKwh].join(','));
+  }
+
+  return rows.join('\n');
+}
+
+/**
  * 3. Generates full period CSV (measured + reconstructed across all grid stamps):
  * timestamp,turbine,wind_speed_measured,wind_speed_pred,power_pred_kw,in_outage
  */
@@ -193,6 +230,56 @@ export function generateSummaryCSV(result: EngineResult): string {
     )},${Math.round(report.parkRange80UpperKWh)},${powerCurveBasis}`
   );
 
+  const tpSummary = formatTestPeriodSummary(result);
+  if (tpSummary) {
+    rows.push('');
+    rows.push(`test_period_result,"${tpSummary}"`);
+  }
+
+  return rows.join('\n');
+}
+
+/**
+ * Formats the standard test period evaluation sentence.
+ * "On the test period after the outage (dates, n stamps) the predicted wind had RMSE x.xx m/s and MAE x.xx m/s; the predicted energy deviated by +x.x % from the measured energy (park)."
+ */
+export function formatTestPeriodSummary(result: EngineResult): string {
+  const tp = result.testPeriod || result.report.testPeriod;
+  if (!tp || tp.stampsCount === 0) return '';
+  const dates = `${tp.startDateStr} to ${tp.endDateStr}`;
+  const n = tp.stampsCount.toLocaleString('en-US');
+  const rmse = tp.meanWindRMSE.toFixed(2);
+  const mae = tp.meanWindMAE.toFixed(2);
+  const sign = tp.parkEnergyDevPct >= 0 ? '+' : '';
+  const dev = `${sign}${tp.parkEnergyDevPct.toFixed(1)} %`;
+  return `On the test period after the outage (${dates}, ${n} stamps) the predicted wind had RMSE ${rmse} m/s and MAE ${mae} m/s; the predicted energy deviated by ${dev} from the measured energy (park).`;
+}
+
+/**
+ * Generates test_metrics_Park_{T}.csv export with columns:
+ * turbine,n,wind_rmse_ms,wind_mae_ms,wind_bias_ms,r,power_rmse_kw,power_mae_kw,energy_measured_kwh,energy_predicted_kwh,energy_dev_pct,test_period_start,test_period_end
+ */
+export function generateTestMetricsCSV(result: EngineResult): string {
+  const tp = result.testPeriod || result.report.testPeriod;
+  if (!tp) return '';
+
+  const rows = [
+    'turbine,n,wind_rmse_ms,wind_mae_ms,wind_bias_ms,r,power_rmse_kw,power_mae_kw,energy_measured_kwh,energy_predicted_kwh,energy_dev_pct,test_period_start,test_period_end',
+  ];
+
+  for (const tName of result.report.targetTurbines) {
+    const met = tp.turbines[tName];
+    if (!met) continue;
+    rows.push(
+      `${tName},${met.n},${met.windRMSE.toFixed(4)},${met.windMAE.toFixed(4)},${met.windBias.toFixed(4)},${met.r.toFixed(4)},${met.powerRMSE.toFixed(2)},${met.powerMAE.toFixed(2)},${Math.round(met.measuredEnergyKWh)},${Math.round(met.predictedEnergyKWh)},${met.energyDevPct.toFixed(2)},"${tp.startDateStr}","${tp.endDateStr}"`
+    );
+  }
+
+  // Park row
+  rows.push(
+    `Park_${result.report.targetPark},${tp.stampsCount},${tp.meanWindRMSE.toFixed(4)},${tp.meanWindMAE.toFixed(4)},,,,,,${Math.round(tp.parkMeasuredEnergyKWh)},${Math.round(tp.parkPredictedEnergyKWh)},${tp.parkEnergyDevPct.toFixed(2)},"${tp.startDateStr}","${tp.endDateStr}"`
+  );
+
   return rows.join('\n');
 }
 
@@ -242,6 +329,11 @@ export function generateClaimEmail(result: EngineResult): string {
       'Air density: not included, because no varying air-pressure measurements were available in the reference data.';
   }
 
+  const tpSummary = formatTestPeriodSummary(result);
+  const accuracyText = tpSummary
+    ? `Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors. ${tpSummary}`
+    : `Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors.`;
+
   return `Subject: Business-interruption claim - wind park ${report.targetPark} - outage ${outage.startDateStr} to ${outage.endDateStr} - estimated lost energy
 
 Dear claims team,
@@ -250,7 +342,7 @@ From ${outage.startDateStr} to ${outage.endDateStr} (${outage.durationHours.toFi
 
 Method: the wind at each turbine was reconstructed every 10 minutes from the neighbouring park(s) ${parksStr}, which kept running, using the relation learned from the measured data outside the outage (separately for 4 wind directions), and converted with each turbine's power curve.
 
-Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors.
+${accuracyText}
 
 ${densitySentence}
 

@@ -27,6 +27,7 @@ import {
   runBacktestForCombination,
 } from './backtest';
 import { FinalReport, generateFinalReport } from './report';
+import { TestPeriodResult, evaluateTestPeriod } from './testPeriod';
 
 export * from './linalg';
 export * from './parse';
@@ -37,6 +38,7 @@ export * from './model';
 export * from './power';
 export * from './backtest';
 export * from './report';
+export * from './testPeriod';
 export * from './referenceValues';
 
 export interface CalculationOptions {
@@ -56,6 +58,8 @@ export interface EngineResult {
   allCombinations: ParkCombinationResult[];
   chosenCombination: ParkCombinationResult;
   report: FinalReport;
+  testPeriod?: TestPeriodResult;
+  testPeriodAll?: TestPeriodResult;
   errors: string[];
   warnings: string[];
 }
@@ -114,8 +118,8 @@ export function runLossEstimation(
     }
   }
 
-  // 3. Known stamps mask
-  const trainingOption = options.trainingOption || 'all_measured';
+  // 3. Known stamps mask - default is now 'before_outage' (official protocol)
+  const trainingOption = options.trainingOption || 'before_outage';
   const knownMask = getKnownMask(
     grid,
     outage.targetTurbines,
@@ -189,6 +193,37 @@ export function runLossEstimation(
     screening.usedTurbines
   );
 
+  // 7. Evaluate test period (after the outage)
+  const modelsMap: Record<string, any> = {};
+  for (const tName of outage.targetTurbines) {
+    if (report.turbines[tName]?.model) {
+      modelsMap[tName] = report.turbines[tName].model;
+    }
+  }
+
+  const testPeriod = evaluateTestPeriod(
+    grid,
+    outage,
+    outage.targetTurbines,
+    modelsMap,
+    powerCurvesMap,
+    screening.directionResult.sectors,
+    'flagged'
+  );
+
+  const testPeriodAll = evaluateTestPeriod(
+    grid,
+    outage,
+    outage.targetTurbines,
+    modelsMap,
+    powerCurvesMap,
+    screening.directionResult.sectors,
+    'all_after'
+  );
+
+  report.testPeriod = testPeriod;
+  report.testPeriodAll = testPeriodAll;
+
   if (onProgress) onProgress('complete', 100, 'Calculation complete.');
 
   return {
@@ -198,6 +233,8 @@ export function runLossEstimation(
     allCombinations,
     chosenCombination: activeChosen,
     report,
+    testPeriod,
+    testPeriodAll,
     errors,
     warnings,
   };
