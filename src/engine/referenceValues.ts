@@ -711,7 +711,104 @@ export function runOfficialProtocolChecks(result: EngineResult): SelfTestCheckIt
     checkCorr('H1', 'T1', 0.667, 'b_corr_H1_T1');
     checkCorr('O1', 'T2', 0.767, 'b_corr_O1_T2');
     checkCorr('Park O mean', 'T3', 0.745, 'b_corr_ParkO_T3');
+
+    // 11. Mean of all reference turbines vs target turbines (T1: 0.725, T2: 0.798, T3: 0.776 ±0.002)
+    const allRefRow = corr.rows.find((r) => r.label === 'Mean of all reference turbines');
+    const checkAllRef = (tgt: string, expR: number, id: string) => {
+      const actR = allRefRow?.rValues[tgt];
+      const passed = actR !== undefined && Math.abs(actR - expR) <= 0.002;
+      checks.push({
+        id,
+        category: 'Correlation Analysis',
+        name: `Mean of All References vs ${tgt}`,
+        expected: expR.toFixed(3),
+        actual: actR !== undefined ? actR.toFixed(3) : 'N/A',
+        passed,
+        tolerance: '±0.002',
+      });
+    };
+
+    checkAllRef('T1', 0.725, 'b_all_ref_T1');
+    checkAllRef('T2', 0.798, 'b_all_ref_T2');
+    checkAllRef('T3', 0.776, 'b_all_ref_T3');
+
+    // 12. Correlation map key values (O1-O2 0.9675, H3-H5 0.9053, T2-T3 0.8827, H2-T1 0.6099 ±0.002)
+    if (corr.allTurbinesMap) {
+      const checkMatrixVal = (tA: string, tB: string, expR: number, id: string) => {
+        const idxA = corr.allTurbinesMap!.turbines.indexOf(tA);
+        const idxB = corr.allTurbinesMap!.turbines.indexOf(tB);
+        const actR = idxA >= 0 && idxB >= 0 ? corr.allTurbinesMap!.matrix[idxA][idxB] : undefined;
+        const passed = actR !== undefined && Math.abs(actR - expR) <= 0.002;
+        checks.push({
+          id,
+          category: 'Correlation Matrix (10x10)',
+          name: `Correlation ${tA} ↔ ${tB}`,
+          expected: expR.toFixed(4),
+          actual: actR !== undefined ? actR.toFixed(4) : 'N/A',
+          passed,
+          tolerance: '±0.002',
+        });
+      };
+
+      checkMatrixVal('O1', 'O2', 0.9675, 'b_mat_O1_O2');
+      checkMatrixVal('H3', 'H5', 0.9053, 'b_mat_H3_H5');
+      checkMatrixVal('T2', 'T3', 0.8827, 'b_mat_T2_T3');
+      checkMatrixVal('H2', 'T1', 0.6099, 'b_mat_H2_T1');
+    }
+
+    // 13. Best time-delay shifts (T1: H -30 / O 0, T2: H -30 / O +10, T3: H -30 / O +10)
+    if (corr.timeDelayAnalysis) {
+      const checkShift = (tgt: string, expH: number, expO: number, id: string) => {
+        const td = corr.timeDelayAnalysis!.find((a) => a.targetTurbine === tgt);
+        const actH = td?.bestShiftH;
+        const actO = td?.bestShiftO;
+        const passed = actH === expH && actO === expO;
+        const fmt = (m: number) => (m > 0 ? `+${m}` : `${m}`);
+        checks.push({
+          id,
+          category: 'Time Delay Screening',
+          name: `Optimal Shift ${tgt} (H / O)`,
+          expected: `H: ${fmt(expH)} min, O: ${fmt(expO)} min`,
+          actual: td ? `H: ${fmt(actH!)} min, O: ${fmt(actO!)} min` : 'N/A',
+          passed,
+          tolerance: 'exact',
+        });
+      };
+
+      checkShift('T1', -30, 0, 'b_td_shift_T1');
+      checkShift('T2', -30, 10, 'b_td_shift_T2');
+      checkShift('T3', -30, 10, 'b_td_shift_T3');
+    }
   }
+
+  // 14. BayWa format export sum & row 1 power
+  const row1Power =
+    (estT1?.expectedPowerOutage[0] ?? 0) +
+    (estT2?.expectedPowerOutage[0] ?? 0) +
+    (estT3?.expectedPowerOutage[0] ?? 0);
+
+  const bayWaSumPassed = Math.abs(report.parkEnergyKWh - 316117.7) <= 0.1;
+  checks.push({
+    id: 'b_export_baywa_sum',
+    category: 'BayWa Export Verification',
+    name: 'BayWa Format Export Park Energy Sum',
+    expected: '316,117.7 kWh',
+    actual: `${report.parkEnergyKWh.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`,
+    passed: bayWaSumPassed,
+    tolerance: '±0.1 kWh',
+  });
+
+  const row1Passed = Math.abs(row1Power - 8720.29) <= 0.1;
+  checks.push({
+    id: 'b_export_baywa_row1_power',
+    category: 'BayWa Export Verification',
+    name: 'BayWa Format Export Row 1 Power (T1+T2+T3)',
+    expected: '8,720.29 kW',
+    actual: `${row1Power.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kW`,
+    passed: row1Passed,
+    tolerance: '±0.10 kW',
+    detail: `T1: ${estT1?.expectedPowerOutage[0]?.toFixed(2) ?? 'N/A'} kW, T2: ${estT2?.expectedPowerOutage[0]?.toFixed(2) ?? 'N/A'} kW, T3: ${estT3?.expectedPowerOutage[0]?.toFixed(2) ?? 'N/A'} kW`,
+  });
 
   return checks;
 }

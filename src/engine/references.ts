@@ -28,9 +28,45 @@ export interface CorrelationRow {
   rValues: Record<string, number>;
 }
 
+export interface TurbineCorrelationMap {
+  turbines: string[];
+  parkMap: Record<string, string>;
+  parksOrder: string[];
+  matrix: number[][];
+}
+
+export interface TimeShiftPoint {
+  shiftMin: number;
+  r: number;
+}
+
+export interface TimeDelayPoint {
+  shiftMinutes: number;
+  parkHCorrelation: number;
+  parkOCorrelation: number;
+}
+
+export interface TurbineTimeDelayAnalysis {
+  targetTurbine: string;
+  bestShiftH: number;
+  bestShiftO: number;
+  bestCorrH: number;
+  bestCorrO: number;
+  points: TimeDelayPoint[];
+  parks?: {
+    park: string;
+    bestShiftMin: number;
+    bestR: number;
+    curve: TimeShiftPoint[];
+  }[];
+}
+
 export interface CorrelationAnalysisResult {
   targetTurbines: string[];
+  referenceTurbines: string[];
   rows: CorrelationRow[];
+  allTurbinesMap: TurbineCorrelationMap;
+  timeDelayAnalysis: TurbineTimeDelayAnalysis[];
   singleNeighbourMinR: number;
   singleNeighbourMaxR: number;
 }
@@ -245,8 +281,8 @@ export function computeCorrelationAnalysis(
   usedParks: string[],
   parkMeans: Record<string, Float64Array>
 ): CorrelationAnalysisResult {
-  const { windSpeed, turbineParkMap } = grid;
-  const { startIndex, targetTurbines } = outage;
+  const { windSpeed, turbineParkMap, nRows } = grid;
+  const { startIndex, targetTurbines, targetPark } = outage;
 
   const rows: CorrelationRow[] = [];
   let singleNeighbourMinR = Infinity;
@@ -319,9 +355,192 @@ export function computeCorrelationAnalysis(
     });
   }
 
+  // 3. Row "Mean of all reference turbines" (mean of all used reference turbines at each stamp)
+  const allRefMeanSeries = new Float64Array(startIndex);
+  for (let t = 0; t < startIndex; t++) {
+    let sum = 0;
+    let count = 0;
+    for (const ref of usedTurbines) {
+      const v = windSpeed[ref]?.[t];
+      if (!Number.isNaN(v)) {
+        sum += v;
+        count++;
+      }
+    }
+    allRefMeanSeries[t] = count > 0 ? sum / count : NaN;
+  }
+
+  const allRefMeanRValues: Record<string, number> = {};
+  for (const tgt of targetTurbines) {
+    const tgtSeries = windSpeed[tgt];
+    const xVals: number[] = [];
+    const yVals: number[] = [];
+
+    for (let t = 0; t < startIndex; t++) {
+      const xr = allRefMeanSeries[t];
+      const yt = tgtSeries ? tgtSeries[t] : NaN;
+      if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
+        xVals.push(xr);
+        yVals.push(yt);
+      }
+    }
+
+    const r = pearsonCorrelation(xVals, yVals);
+    allRefMeanRValues[tgt] = r;
+  }
+
+  rows.push({
+    label: 'Mean of all reference turbines',
+    isParkMean: true,
+    park: 'All',
+    rValues: allRefMeanRValues,
+  });
+
+  // 4. Full correlation map of ALL turbines in the data ordered by park, target park last
+  // Collect all unique parks from grid.turbines
+  const allParksSet = new Set<string>();
+  for (const t of grid.turbines) {
+    const p = turbineParkMap[t];
+    if (p && p !== targetPark) {
+      allParksSet.add(p);
+    }
+  }
+  const parksOrder = [...Array.from(allParksSet).sort(), targetPark];
+
+  const orderedTurbines: string[] = [];
+  for (const p of parksOrder) {
+    const pTurbines = grid.turbines
+      .filter((t) => turbineParkMap[t] === p)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    orderedTurbines.push(...pTurbines);
+  }
+
+  const matrix: number[][] = [];
+  for (let i = 0; i < orderedTurbines.length; i++) {
+    matrix[i] = [];
+    const tA = orderedTurbines[i];
+    const sA = windSpeed[tA];
+
+    for (let j = 0; j < orderedTurbines.length; j++) {
+      if (i === j) {
+        matrix[i][j] = 1.0;
+        continue;
+      }
+
+      const tB = orderedTurbines[j];
+      const sB = windSpeed[tB];
+      const xVals: number[] = [];
+      const yVals: number[] = [];
+
+      for (let t = 0; t < startIndex; t++) {
+        const va = sA ? sA[t] : NaN;
+        const vb = sB ? sB[t] : NaN;
+        if (!Number.isNaN(va) && !Number.isNaN(vb)) {
+          xVals.push(va);
+          yVals.push(vb);
+        }
+      }
+
+      matrix[i][j] = pearsonCorrelation(xVals, yVals);
+    }
+  }
+
+  const allTurbinesMap: TurbineCorrelationMap = {
+    turbines: orderedTurbines,
+    parkMap: turbineParkMap,
+    parksOrder,
+    matrix,
+  };
+
+  // 5. Time delay: correlation vs time shift (-60 to +60 min in 10-min steps)
+  // For each target turbine, compute curve for each reference park mean
+  const timeDelayAnalysis: TurbineTimeDelayAnalysis[] = [];
+
+  for (const tgt of targetTurbines) {
+    const tgtSeries = windSpeed[tgt];
+    const parkCurves: {
+      park: string;
+      bestShiftMin: number;
+      bestR: number;
+      curve: TimeShiftPoint[];
+    }[] = [];
+
+    for (const p of usedParks) {
+      const parkSeries = parkMeans[p];
+      const curve: TimeShiftPoint[] = [];
+      let bestR = -Infinity;
+      let bestShiftMin = 0;
+
+      for (let k = -6; k <= 6; k++) {
+        const shiftMin = k * 10;
+        const xVals: number[] = [];
+        const yVals: number[] = [];
+
+        for (let tau = 0; tau < startIndex; tau++) {
+          const j = tau - k;
+          if (j < 0 || j >= nRows) continue;
+
+          const xVal = parkSeries ? parkSeries[j] : NaN;
+          const yVal = tgtSeries ? tgtSeries[tau] : NaN;
+          if (!Number.isNaN(xVal) && !Number.isNaN(yVal)) {
+            xVals.push(xVal);
+            yVals.push(yVal);
+          }
+        }
+
+        const r = pearsonCorrelation(xVals, yVals);
+        curve.push({ shiftMin, r });
+
+        if (!Number.isNaN(r) && r > bestR) {
+          bestR = r;
+          bestShiftMin = shiftMin;
+        }
+      }
+
+      parkCurves.push({
+        park: p,
+        bestShiftMin,
+        bestR,
+        curve,
+      });
+    }
+
+    const hData = parkCurves.find((c) => c.park === 'H');
+    const oData = parkCurves.find((c) => c.park === 'O');
+    const bestShiftH = hData?.bestShiftMin ?? 0;
+    const bestCorrH = hData?.bestR ?? 0;
+    const bestShiftO = oData?.bestShiftMin ?? 0;
+    const bestCorrO = oData?.bestR ?? 0;
+
+    const points: TimeDelayPoint[] = [];
+    for (let k = -6; k <= 6; k++) {
+      const shiftMinutes = k * 10;
+      const ptH = hData?.curve.find((c) => c.shiftMin === shiftMinutes);
+      const ptO = oData?.curve.find((c) => c.shiftMin === shiftMinutes);
+      points.push({
+        shiftMinutes,
+        parkHCorrelation: ptH ? ptH.r : NaN,
+        parkOCorrelation: ptO ? ptO.r : NaN,
+      });
+    }
+
+    timeDelayAnalysis.push({
+      targetTurbine: tgt,
+      bestShiftH,
+      bestShiftO,
+      bestCorrH,
+      bestCorrO,
+      points,
+      parks: parkCurves,
+    });
+  }
+
   return {
     targetTurbines,
+    referenceTurbines: usedTurbines,
     rows,
+    allTurbinesMap,
+    timeDelayAnalysis,
     singleNeighbourMinR: singleNeighbourMinR === Infinity ? 0 : singleNeighbourMinR,
     singleNeighbourMaxR: singleNeighbourMaxR === -Infinity ? 0 : singleNeighbourMaxR,
   };

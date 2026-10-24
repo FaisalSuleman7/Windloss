@@ -36,8 +36,11 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
+              <span className="hidden sm:inline text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
                 Wind Outage Loss Estimator
+              </span>
+              <span className="sm:hidden text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight whitespace-nowrap">
+                Wind Loss
               </span>
               {isDemoActive && (
                 <span className="hidden sm:inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-800">

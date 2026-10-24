@@ -132,7 +132,7 @@ export function generateBayWaFormatPredictionsCSV(result: EngineResult): string 
     for (const t of targets) {
       const est = report.turbines[t];
       const ws = est ? est.predictedWindOutage[i] : NaN;
-      const p = est ? (est.densityPowerOutage ? est.densityPowerOutage[i] : est.expectedPowerOutage[i]) : NaN;
+      const p = est ? est.expectedPowerOutage[i] : NaN;
 
       const wsVal = Number.isNaN(ws) ? 0 : ws;
       const pVal = Number.isNaN(p) ? 0 : p;
@@ -230,12 +230,6 @@ export function generateSummaryCSV(result: EngineResult): string {
     )},${Math.round(report.parkRange80UpperKWh)},${powerCurveBasis}`
   );
 
-  const tpSummary = formatTestPeriodSummary(result);
-  if (tpSummary) {
-    rows.push('');
-    rows.push(`test_period_result,"${tpSummary}"`);
-  }
-
   return rows.join('\n');
 }
 
@@ -275,9 +269,9 @@ export function generateTestMetricsCSV(result: EngineResult): string {
     );
   }
 
-  // Park row
+  // Park row: 13 columns matching header
   rows.push(
-    `Park_${result.report.targetPark},${tp.stampsCount},${tp.meanWindRMSE.toFixed(4)},${tp.meanWindMAE.toFixed(4)},,,,,,${Math.round(tp.parkMeasuredEnergyKWh)},${Math.round(tp.parkPredictedEnergyKWh)},${tp.parkEnergyDevPct.toFixed(2)},"${tp.startDateStr}","${tp.endDateStr}"`
+    `Park_${result.report.targetPark},${tp.stampsCount},${tp.meanWindRMSE.toFixed(4)},${tp.meanWindMAE.toFixed(4)},,,,,${Math.round(tp.parkMeasuredEnergyKWh)},${Math.round(tp.parkPredictedEnergyKWh)},${tp.parkEnergyDevPct.toFixed(2)},"${tp.startDateStr}","${tp.endDateStr}"`
   );
 
   return rows.join('\n');

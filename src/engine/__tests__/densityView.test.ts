@@ -61,7 +61,15 @@ describe('Air Density View and Exports', () => {
       },
       correlationAnalysis: {
         targetTurbines: ['T1'],
+        referenceTurbines: [],
         rows: [],
+        allTurbinesMap: {
+          turbines: [],
+          parkMap: {},
+          parksOrder: [],
+          matrix: [],
+        },
+        timeDelayAnalysis: [],
         singleNeighbourMinR: 0,
         singleNeighbourMaxR: 0,
       },

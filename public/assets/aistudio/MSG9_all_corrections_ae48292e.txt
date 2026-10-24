@@ -1,0 +1,44 @@
+BEFORE SENDING: fill in or delete the [brackets] in PART D. If nobody joins the team, delete the second member line. Attach your 5-7 photos to this message.
+
+I tested every screen and every download against the Python reference. All numbers on screen are correct. Please make the changes below. Do NOT change the calculation engine, any number on screen or the existing Self-test values.
+
+PART A - EXPORT BUGS (most important)
+A1. predictions_BayWa_format_Park_{T}.csv uses the WRONG power. With "Standard air density" selected, park_power_kw and park_energy_kwh contain the SITE-DENSITY values (column sum 309,794.8 kWh instead of 316,117.7; first row 8613.44 / 1435.574 instead of 8720.29 / 1453.382). The wind columns are correct.
+   Fix: park_power_kw = sum over the target turbines of the SAME per-turbine predicted power that "Predictions (outage, per turbine)" exports (that file is correct, its sum is 316,117.7). Follow the density choice exactly like the other exports. park_energy_kwh = park_power_kw / 6.
+   Expected (standard density): first row 2026-09-01 00:00,8.0791,9.0850,8.2347,8720.29,1453.382 ; last row 2026-09-03 23:50,6.2192,7.0066,6.4034,4619.85,769.975 ; column sum 316,117.7.
+A2. test_metrics_Park_{T}.csv: the park row has one empty field too many (14 fields, header 13). It must be:
+   Park_T,864,1.3596,1.0402,,,,,797057,801166,0.52,"2026-09-04 00:00","2026-09-09 23:50"
+   Every row must have exactly as many fields as the header.
+A3. summary_Park_{T}_loss.csv: remove the extra last line 'test_period_result,...' (2 fields in a 6-column table). The sentence stays in the e-mail and the audit report.
+
+PART B - CORRELATION MAP (Step 4, replace the current "Correlation analysis" card with these three parts)
+B1. Full correlation map of ALL turbines (like a heat map): rows and columns = every turbine in the data (demo: H1-H5, O1-O2, T1-T3, ordered by park, target park last). Cell = Pearson r of the 10-minute wind speeds on the training data before the outage, pairwise complete, no time shift. Diagonal = 1.00. 2 decimals in the cell. Colour scale white (r <= 0.50) to dark blue #0B3C6B (r = 1.00); text white when r > 0.82. Row/column labels bold in the park colour (H #E69F00, O #009E73, target #0072B2). Thick white lines between parks. Small colour bar 0.50 - 1.00. Title "How strongly do the turbines' winds move together? (training data before the outage)". Note under it: "Inside a park the winds agree strongly; between the target park and any single neighbour much less. Target-to-target cells are shown for information only - during the outage the target park has no data."
+B2. Keep the existing table "reference -> target" (reference turbines and park means vs T1/T2/T3) and add one more row "Mean of all reference turbines" (mean of all used reference turbines, then r vs each target).
+B3. New small chart "Time delay: correlation vs time shift" - one panel per target turbine; x = shift from -60 to +60 min in 10-min steps, y = r between the shifted park mean (H, O, ... in park colours) and the target, training data before the outage. Mark the best shift of each park with a dot and the label "best {+/-}xx min". These best shifts must be the same lags the model uses (Step 5). Sentence under it: "Weather reaches the parks at different times; the model uses for each park the shift with the highest correlation."
+B4. Keep the summary sentence "Single neighbours reach r = ... The combined model ... reaches r = ... on the unseen test period."
+
+PART C - SMALL UI
+C1. Phone width (< 640 px): the header title wraps to 3 lines and is cut off at the top. Show it on one line (short title "Wind Loss" or ellipsis).
+
+PART D - TEAM AND PHOTOS (only src/config/about.ts and public/highlights/)
+D1. TEAM array exactly (max 4 entries, show only filled ones):
+   { name: "Hafiz Muhammad Faisal", role: "Team lead - method, engine and tool", affiliation: "Technical University of Munich (TUM)", photo: "", linkedin: "[LinkedIn URL or leave empty]", email: "" },
+   { name: "[Full name of member 2]", role: "[role]", affiliation: "[university or company]", photo: "", linkedin: "", email: "" },
+D2. I attached [N] photos. Save them in the order attached as public/highlights/01.jpg, 02.jpg, ... (resize to max 1600 px wide, JPG) and set HIGHLIGHTS to:
+   { src: "/highlights/01.jpg", caption: "[caption 1]" },
+   { src: "/highlights/02.jpg", caption: "[caption 2]" },
+   ... one line per photo.
+   Remove the example 01_hackathon_demo.svg entry. If you cannot store the attached images as files, tell me clearly instead of using placeholders.
+
+PART E - SELF-TEST (section B, add)
+- BayWa-format export: sum of park_energy_kwh 316,117.7 kWh (0.1 %), first-row park_power_kw 8720.29 (0.05 kW), computed by the same function that writes the file.
+- Correlation map: O1-O2 0.9675, H3-H5 0.9053, T2-T3 0.8827, H2-T1 0.6099 (0.002); mean of all references vs T1 0.725, T2 0.798, T3 0.776 (0.002).
+- Time-delay chart best shifts: T1 H -30 min, O 0 min; T2 H -30, O +10; T3 H -30, O +10 (exact) - equal to the model lags.
+
+FINAL CHECK (please confirm each):
+1. With standard density, the BayWa-format CSV sum is 316,117.7 and its first row matches A1.
+2. test_metrics CSV opens in Excel with aligned columns; summary CSV has 5 lines.
+3. Step 4 shows the 10 x 10 map with O1-O2 0.97 and H2-T1 0.61, the extra "Mean of all reference turbines" row (T1 0.73 / T2 0.80 / T3 0.78) and the time-delay chart.
+4. About & Team shows the team cards and the photos slide.
+5. Self-test A 29/29 and B all green, including the new checks.
+6. Header fits on one line at 400 px width.

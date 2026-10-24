@@ -55,9 +55,4 @@ export const EVENT: EventConfig = {
  * 2. Add an entry below with src: '/highlights/01.jpg' and caption: '...'.
  * If this array is empty, the entire highlights slider section is automatically hidden.
  */
-export const HIGHLIGHTS: HighlightItem[] = [
-  {
-    src: '/highlights/01_hackathon_demo.svg',
-    caption: 'WATT THE HACK Munich Energy & AI Hackathon — BayWa r.e. Wind Farm Loss Prediction',
-  },
-];
+export const HIGHLIGHTS: HighlightItem[] = [];
