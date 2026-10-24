@@ -1,16 +1,18 @@
 /**
  * Turbine wind speed model: park lags, OLS regression (global and sector-blended),
- * prediction with missing park imputation, and residual error spread.
+ * 50-minute smoothing, turbulence input, prediction with missing park imputation,
+ * and residual error spread.
  * Pure serializable data structures compatible with postMessage / structured cloning.
  */
 import { solveOLS, sampleStd, pearsonCorrelation } from './linalg';
 
 export interface SectorCoefficients {
-  sector: number; // 0=N, 1=E, 2=S, 3=W
+  sector: number; // 0..nSectors-1
   name: string;
   nRows: number;
   weight: number;
   aParks: Record<string, number>;
+  dTurbulence?: number;
   c: number;
   betaRaw: number[];
   betaBlended: number[];
@@ -20,9 +22,15 @@ export interface TurbineModel {
   turbineName: string;
   refParks: string[]; // sorted
   lags: Record<string, number>; // lag k in -6..+6 per park
-  features: Record<string, Float64Array>; // X_P(tau) = Park_P(tau - lag_P)
+  features: Record<string, Float64Array>; // X_P(tau) = Park_P_smooth(tau - lag_P)
+  turbulenceFeature?: Float64Array;
+  hasTurbulence: boolean;
   betaGlobal: number[];
-  globalCoefficients: { aParks: Record<string, number>; c: number };
+  globalCoefficients: {
+    aParks: Record<string, number>;
+    dTurbulence?: number;
+    c: number;
+  };
   sectorModels: SectorCoefficients[];
   blendedBetas: number[][];
   sigmaGlobal: number;
@@ -31,6 +39,126 @@ export interface TurbineModel {
 
 export const SECTOR_NAMES_4 = ['N', 'E', 'S', 'W'];
 export const SECTOR_NAMES_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+/**
+ * Computes centred running mean over `smoothSteps` stamps (e.g. 5 steps = t-2..t+2),
+ * averaging only available values (missing if none).
+ */
+export function computeCenteredRunningMean(
+  series: Float64Array,
+  smoothSteps: number
+): Float64Array {
+  const n = series.length;
+  if (smoothSteps <= 1) {
+    return new Float64Array(series);
+  }
+  const radius = Math.floor(smoothSteps / 2);
+  const result = new Float64Array(n);
+
+  for (let t = 0; t < n; t++) {
+    const start = Math.max(0, t - radius);
+    const end = Math.min(n - 1, t + radius);
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j <= end; j++) {
+      const v = series[j];
+      if (!Number.isNaN(v)) {
+        sum += v;
+        count++;
+      }
+    }
+    result[t] = count > 0 ? sum / count : NaN;
+  }
+
+  return result;
+}
+
+/**
+ * Computes the turbulence input series S(t):
+ * - mean of wind_speed_stddev over the USED reference turbines whose stddev column is > 50% filled
+ * - centred running mean over `smoothSteps` stamps
+ * - missing values replaced by the median of S over the fit mask; no time shift
+ */
+export function computeTurbulenceSeries(
+  windSpeedStdDev: Record<string, Float64Array>,
+  nRows: number,
+  usedTurbines: string[],
+  smoothSteps: number,
+  fitMask: boolean[]
+): {
+  turbulenceSeries: Float64Array | null;
+  hasTurbulenceData: boolean;
+  qualifyingTurbines: string[];
+} {
+  const qualifyingTurbines: string[] = [];
+
+  for (const tName of usedTurbines) {
+    const stdArr = windSpeedStdDev[tName];
+    if (!stdArr) continue;
+    let validCount = 0;
+    for (let t = 0; t < nRows; t++) {
+      if (!Number.isNaN(stdArr[t])) {
+        validCount++;
+      }
+    }
+    if (nRows > 0 && validCount / nRows > 0.5) {
+      qualifyingTurbines.push(tName);
+    }
+  }
+
+  if (qualifyingTurbines.length === 0) {
+    return {
+      turbulenceSeries: null,
+      hasTurbulenceData: false,
+      qualifyingTurbines: [],
+    };
+  }
+
+  // 1. S(t) = mean of wind_speed_stddev over qualifying reference turbines
+  const rawS = new Float64Array(nRows);
+  for (let t = 0; t < nRows; t++) {
+    let sum = 0;
+    let count = 0;
+    for (const tName of qualifyingTurbines) {
+      const v = windSpeedStdDev[tName][t];
+      if (!Number.isNaN(v)) {
+        sum += v;
+        count++;
+      }
+    }
+    rawS[t] = count > 0 ? sum / count : NaN;
+  }
+
+  // 2. Centred running mean
+  const smoothedS = computeCenteredRunningMean(rawS, smoothSteps);
+
+  // 3. Impute missing values with median of S over the fit mask
+  const fitValues: number[] = [];
+  for (let t = 0; t < nRows; t++) {
+    if (fitMask[t] && !Number.isNaN(smoothedS[t])) {
+      fitValues.push(smoothedS[t]);
+    }
+  }
+  fitValues.sort((a, b) => a - b);
+  const medianVal =
+    fitValues.length > 0
+      ? fitValues.length % 2 === 1
+        ? fitValues[Math.floor(fitValues.length / 2)]
+        : (fitValues[fitValues.length / 2 - 1] + fitValues[fitValues.length / 2]) / 2
+      : 0;
+
+  for (let t = 0; t < nRows; t++) {
+    if (Number.isNaN(smoothedS[t])) {
+      smoothedS[t] = medianVal;
+    }
+  }
+
+  return {
+    turbulenceSeries: smoothedS,
+    hasTurbulenceData: true,
+    qualifyingTurbines,
+  };
+}
 
 /**
  * Predicts wind speed at timestamp row `tau` using sector-blended OLS
@@ -49,7 +177,9 @@ export function predictWind(
 
   const M = model.refParks.length;
   const a = beta.slice(0, M);
-  const c = beta[M];
+  const d = model.hasTurbulence ? beta[M] : 0;
+  const c = model.hasTurbulence ? beta[M + 1] : beta[M];
+  const sVal = model.hasTurbulence && model.turbulenceFeature ? model.turbulenceFeature[tau] || 0 : 0;
 
   let sumAllA = 0;
   for (let i = 0; i < M; i++) sumAllA += a[i];
@@ -71,15 +201,17 @@ export function predictWind(
     }
   }
 
+  const turbTerm = model.hasTurbulence ? d * sVal : 0;
+
   if (allPresent) {
-    return weightedPresentSum + c;
+    return weightedPresentSum + turbTerm + c;
   }
 
   if (anyPresent) {
     if (sumPresentA !== 0) {
-      return sumAllA * (weightedPresentSum / sumPresentA) + c;
+      return sumAllA * (weightedPresentSum / sumPresentA) + turbTerm + c;
     }
-    return weightedPresentSum + c;
+    return weightedPresentSum + turbTerm + c;
   }
 
   return NaN;
@@ -96,24 +228,31 @@ export function getModelSigma(model: TurbineModel, vHat: number): number {
 
 /**
  * Fits a model for target turbine `t` on a boolean mask `fitMask`.
+ * - Lag search: performed on unsmoothed rawParkMeans
+ * - Features: smoothedParkMeans shifted by lag
+ * - Turbulence input: optional S(t) added as extra regression input
  */
 export function fitTurbineModel(
   turbineName: string,
   v_t: Float64Array,
   refParks: string[],
-  parkMeans: Record<string, Float64Array>,
+  rawParkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
   fitMask: boolean[],
-  nSectors: number = 8
+  nSectors: number = 8,
+  smoothedParkMeans?: Record<string, Float64Array>,
+  turbulenceSeries: Float64Array | null = null
 ): TurbineModel {
   const nRows = v_t.length;
   const sortedParks = [...refParks].sort();
+  const activeSmoothedParkMeans = smoothedParkMeans || rawParkMeans;
+  const hasTurbulence = turbulenceSeries !== null;
 
-  // 1. Delay per reference park P: lag_P = k in -6..+6 maximizing Pearson r
+  // 1. Delay per reference park P: lag_P = k in -6..+6 maximizing Pearson r on UNSMOOTHED park means
   const lags: Record<string, number> = {};
 
   for (const p of sortedParks) {
-    const parkSeries = parkMeans[p];
+    const parkSeries = rawParkMeans[p];
     let bestR = -Infinity;
     let bestK = 0;
 
@@ -145,12 +284,12 @@ export function fitTurbineModel(
     lags[p] = bestK;
   }
 
-  // 2. Features X_P(tau) = Park_P(tau - lag_P)
+  // 2. Features X_P(tau) = Park_P_smooth(tau - lag_P)
   const features: Record<string, Float64Array> = {};
   const featureColumns: Float64Array[] = [];
 
   for (const p of sortedParks) {
-    const parkSeries = parkMeans[p];
+    const parkSeries = activeSmoothedParkMeans[p];
     const lag = lags[p];
     const feat = new Float64Array(nRows);
 
@@ -167,6 +306,11 @@ export function fitTurbineModel(
     featureColumns.push(feat);
   }
 
+  // If turbulence is active, add turbulenceSeries as an extra feature column
+  if (hasTurbulence && turbulenceSeries) {
+    featureColumns.push(turbulenceSeries);
+  }
+
   // 3. Global OLS formula
   const globalFitRows: number[] = [];
   for (let tau = 0; tau < nRows; tau++) {
@@ -179,6 +323,9 @@ export function fitTurbineModel(
         break;
       }
     }
+    if (hasTurbulence && turbulenceSeries && Number.isNaN(turbulenceSeries[tau])) {
+      allXPresent = false;
+    }
     if (allXPresent) {
       globalFitRows.push(tau);
     }
@@ -186,12 +333,21 @@ export function fitTurbineModel(
 
   const betaGlobal = solveOLS(featureColumns, v_t, globalFitRows);
 
-  const globalCoeffs = {
-    aParks: {} as Record<string, number>,
-    c: betaGlobal[sortedParks.length],
+  const M = sortedParks.length;
+  const globalCoeffs: {
+    aParks: Record<string, number>;
+    dTurbulence?: number;
+    c: number;
+  } = {
+    aParks: {},
+    c: hasTurbulence ? betaGlobal[M + 1] : betaGlobal[M],
   };
-  for (let idx = 0; idx < sortedParks.length; idx++) {
+
+  for (let idx = 0; idx < M; idx++) {
     globalCoeffs.aParks[sortedParks[idx]] = betaGlobal[idx];
+  }
+  if (hasTurbulence) {
+    globalCoeffs.dTurbulence = betaGlobal[M];
   }
 
   // 4. Sector formulas: OLS per sector with blended beta
@@ -228,7 +384,7 @@ export function fitTurbineModel(
     blendedBetas[s] = betaBlended;
 
     const aParks: Record<string, number> = {};
-    for (let idx = 0; idx < sortedParks.length; idx++) {
+    for (let idx = 0; idx < M; idx++) {
       aParks[sortedParks[idx]] = betaBlended[idx];
     }
 
@@ -238,7 +394,8 @@ export function fitTurbineModel(
       nRows: n_s,
       weight,
       aParks,
-      c: betaBlended[sortedParks.length],
+      dTurbulence: hasTurbulence ? betaBlended[M] : undefined,
+      c: hasTurbulence ? betaBlended[M + 1] : betaBlended[M],
       betaRaw,
       betaBlended,
     });
@@ -250,6 +407,8 @@ export function fitTurbineModel(
     refParks: sortedParks,
     lags,
     features,
+    turbulenceFeature: hasTurbulence && turbulenceSeries ? turbulenceSeries : undefined,
+    hasTurbulence,
     betaGlobal,
     globalCoefficients: globalCoeffs,
     sectorModels,
@@ -258,7 +417,7 @@ export function fitTurbineModel(
     sigmaBins: [],
   };
 
-  // 5. Error spread sigma
+  // 5. Error spread sigma from in-sample residuals on fitMask
   const allResiduals: number[] = [];
   const residualsByBin: number[][] = Array.from({ length: 15 }, () => []);
 
@@ -293,6 +452,8 @@ export function fitTurbineModel(
     refParks: sortedParks,
     lags,
     features,
+    turbulenceFeature: hasTurbulence && turbulenceSeries ? turbulenceSeries : undefined,
+    hasTurbulence,
     betaGlobal,
     globalCoefficients: globalCoeffs,
     sectorModels,

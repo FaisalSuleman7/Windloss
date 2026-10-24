@@ -328,13 +328,17 @@ export function generateClaimEmail(result: EngineResult): string {
     ? `Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors. ${tpSummary}`
     : `Accuracy: the method was tested on ${numWindows} periods of the same length where the true values are known; the range covers 80 % of those test errors.`;
 
+  const nSec = report.methodOptions?.nSectors ?? 8;
+  const turbPart = report.methodOptions?.turbulence !== false ? ", using the neighbours' turbulence" : "";
+  const directionsText = `separately for ${nSec} wind directions${turbPart}`;
+
   return `Subject: Business-interruption claim - wind park ${report.targetPark} - outage ${outage.startDateStr} to ${outage.endDateStr} - estimated lost energy
 
 Dear claims team,
 
 From ${outage.startDateStr} to ${outage.endDateStr} (${outage.durationHours.toFixed(1)} hours) the turbines ${targetList} produced no electricity and recorded no wind. We estimate the energy that would have been produced at ${parkKWh} kWh (80 % range ${lowKWh} - ${highKWh} kWh): ${turbineEntries}.
 
-Method: the wind at each turbine was reconstructed every 10 minutes from the neighbouring park(s) ${parksStr}, which kept running, using the relation learned from the measured data outside the outage (separately for 4 wind directions), and converted with each turbine's power curve.
+Method: the wind at each turbine was reconstructed every 10 minutes from the neighbouring park(s) ${parksStr}, which kept running, using the relation learned from the measured data outside the outage (${directionsText}), and converted with each turbine's power curve.
 
 ${accuracyText}
 

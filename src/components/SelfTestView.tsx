@@ -6,14 +6,13 @@ import {
   AlertCircle,
   FileCheck2,
   Cpu,
-  Award,
-  Layers,
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
 import {
   EngineResult,
   runSelfTestChecks,
-  runOfficialProtocolChecks,
+  runSectionBChecks,
+  runVariantBefore4SectorsChecks,
   SelfTestCheckItem,
   runLossEstimation,
   parseRawFiles,
@@ -30,8 +29,10 @@ export const SelfTestView: React.FC = () => {
   const [progressPct, setProgressPct] = useState<number>(0);
   const [engineResultA, setEngineResultA] = useState<EngineResult | null>(null);
   const [engineResultB, setEngineResultB] = useState<EngineResult | null>(null);
+  const [engineResultC, setEngineResultC] = useState<EngineResult | null>(null);
   const [checkItemsA, setCheckItemsA] = useState<SelfTestCheckItem[]>([]);
   const [checkItemsB, setCheckItemsB] = useState<SelfTestCheckItem[]>([]);
+  const [checkItemsC, setCheckItemsC] = useState<SelfTestCheckItem[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Robustness test states
@@ -46,7 +47,7 @@ export const SelfTestView: React.FC = () => {
     setIsComputing(true);
     setErrorMsg(null);
     setProgressMsg('Parsing 13 demo files...');
-    setProgressPct(10);
+    setProgressPct(5);
 
     setTimeout(() => {
       try {
@@ -55,42 +56,59 @@ export const SelfTestView: React.FC = () => {
           throw new Error(errors.join('\n'));
         }
 
-        // Run Section A: Engine reference with "all_measured" data
-        setProgressMsg('Running Section A: Engine reference (all measured data outside outage)...');
-        setProgressPct(25);
+        // Run Section A: Engine reference with "all_measured" data, 4 sectors, smooth 1, turbulence off
+        setProgressMsg('Running Section A: Engine reference (all measured data, 4 sectors, smooth 1)...');
+        setProgressPct(15);
 
         const resA = runLossEstimation(
           turbines,
           powerCurves,
-          { trainingOption: 'all_measured' },
+          { trainingOption: 'all_measured', nSectors: 4, smooth: 1, turbulence: false },
           (stage, pct, detail) => {
             setProgressMsg(`[A: Engine Reference] ${detail}`);
-            setProgressPct(Math.round(20 + pct * 0.35));
+            setProgressPct(Math.round(10 + pct * 0.25));
           }
         );
 
-        // Run Section B: Official protocol with "before_outage" data
-        setProgressMsg('Running Section B: Official protocol (training before outage)...');
-        setProgressPct(60);
+        // Run Section B: Official protocol and final method (notTest, 8 sectors, smooth 5, turbulence on)
+        setProgressMsg('Running Section B: Official protocol and final method (notTest, 8 sectors, smooth 5, turbulence)...');
+        setProgressPct(40);
 
         const resB = runLossEstimation(
           turbines,
           powerCurves,
-          { trainingOption: 'before_outage' },
+          { trainingOption: 'notTest', nSectors: 8, smooth: 5, turbulence: true },
           (stage, pct, detail) => {
-            setProgressMsg(`[B: Official Protocol] ${detail}`);
-            setProgressPct(Math.round(60 + pct * 0.35));
+            setProgressMsg(`[B: Official Protocol & Final Method] ${detail}`);
+            setProgressPct(Math.round(40 + pct * 0.3));
+          }
+        );
+
+        // Run Section C: Variant: training before the outage, 4 sectors, smooth 1, turbulence off
+        setProgressMsg('Running Section C: Variant (training before outage, 4 sectors, smooth 1)...');
+        setProgressPct(75);
+
+        const resC = runLossEstimation(
+          turbines,
+          powerCurves,
+          { trainingOption: 'before_outage', nSectors: 4, smooth: 1, turbulence: false },
+          (stage, pct, detail) => {
+            setProgressMsg(`[C: Variant 4 Sectors] ${detail}`);
+            setProgressPct(Math.round(70 + pct * 0.28));
           }
         );
 
         setEngineResultA(resA);
         setEngineResultB(resB);
+        setEngineResultC(resC);
 
         const checksA = runSelfTestChecks(resA);
-        const checksB = runOfficialProtocolChecks(resB);
+        const checksB = runSectionBChecks(resB);
+        const checksC = runVariantBefore4SectorsChecks(resC);
 
         setCheckItemsA(checksA);
         setCheckItemsB(checksB);
+        setCheckItemsC(checksC);
         setIsComputing(false);
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : String(err));
@@ -101,7 +119,8 @@ export const SelfTestView: React.FC = () => {
 
   // Robustness check (a): Demo without direction columns -> runs and shows one sector
   const runRobustnessA = () => {
-    if (!engineResultA && !engineResultB) return;
+    const activeRes = engineResultB || engineResultA;
+    if (!activeRes) return;
     try {
       setRobustnessAResult('Running calculation without wind direction columns...');
       const { turbines, powerCurves } = parseRawFiles(cachedFiles);
@@ -113,7 +132,10 @@ export const SelfTestView: React.FC = () => {
       }));
 
       const res = runLossEstimation(strippedTurbines, powerCurves, {
-        trainingOption: 'before_outage',
+        trainingOption: 'notTest',
+        nSectors: 8,
+        smooth: 5,
+        turbulence: true,
       });
 
       const hasOneSector = res.screening.directionResult.oneSectorForAllDirections;
@@ -138,7 +160,10 @@ export const SelfTestView: React.FC = () => {
       // Shift start by +36 stamps (6 hours)
       const newStartIdx = activeRes.outage.startIndex + 36;
       const res = runLossEstimation(turbines, powerCurves, {
-        trainingOption: 'before_outage',
+        trainingOption: 'notTest',
+        nSectors: 8,
+        smooth: 5,
+        turbulence: true,
         manualOutage: {
           targetPark: activeRes.outage.targetPark,
           startIndex: newStartIdx,
@@ -160,7 +185,8 @@ export const SelfTestView: React.FC = () => {
 
   // Robustness check (c): Semicolon-separated files with decimal commas, German dates, renamed parks (A=target, B, C=ref)
   const runRobustnessC = () => {
-    if (!engineResultA && !engineResultB) return;
+    const activeRes = engineResultB || engineResultA;
+    if (!activeRes) return;
     try {
       setRobustnessCResult('Synthesizing European semicolon, decimal comma, and renamed parks A/B/C...');
       const { turbines, powerCurves } = parseRawFiles(cachedFiles);
@@ -192,7 +218,10 @@ export const SelfTestView: React.FC = () => {
       });
 
       const res = runLossEstimation(renamedTurbines, renamedPowerCurves, {
-        trainingOption: 'before_outage',
+        trainingOption: 'notTest',
+        nSectors: 8,
+        smooth: 5,
+        turbulence: true,
       });
 
       setRobustnessCResult(
@@ -211,8 +240,10 @@ export const SelfTestView: React.FC = () => {
   const totalCountA = checkItemsA.length;
   const passedCountB = checkItemsB.filter((c) => c.passed).length;
   const totalCountB = checkItemsB.length;
-  const totalPassed = passedCountA + passedCountB;
-  const totalAll = totalCountA + totalCountB;
+  const passedCountC = checkItemsC.filter((c) => c.passed).length;
+  const totalCountC = checkItemsC.length;
+  const totalPassed = passedCountA + passedCountB + passedCountC;
+  const totalAll = totalCountA + totalCountB + totalCountC;
 
   const renderTable = (items: SelfTestCheckItem[], title: string, subtitle: string, badgeText: string) => (
     <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
@@ -240,7 +271,7 @@ export const SelfTestView: React.FC = () => {
               <th className="py-2.5 px-3 font-semibold">Metric Name</th>
               <th className="py-2.5 px-3 font-semibold">Expected (Spec)</th>
               <th className="py-2.5 px-3 font-semibold">Actual (Engine)</th>
-              <th className="py-2.5 px-3 font-semibold text-center">Tolerance</th>
+              <th className="py-2.5 px-3 text-center">Tolerance</th>
               <th className="py-2.5 px-3 font-semibold">Verification Details</th>
             </tr>
           </thead>
@@ -306,7 +337,7 @@ export const SelfTestView: React.FC = () => {
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Verifies mathematical exactness against both Section A (Engine reference on all data) and Section B (Official BayWa evaluation protocol with training before outage).
+              Verifies mathematical exactness against Section A (Engine reference on all data), Section B (Official BayWa protocol & final method), and Section C (Variant with training before outage).
             </p>
           </div>
 
@@ -340,6 +371,21 @@ export const SelfTestView: React.FC = () => {
                   <XCircle className="w-4 h-4 text-rose-600" />
                 )}
                 <span>B: {passedCountB}/{totalCountB}</span>
+              </div>
+
+              <div
+                className={`px-3 py-1.5 rounded-lg border font-medium text-xs flex items-center space-x-1.5 ${
+                  passedCountC === totalCountC
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                }`}
+              >
+                {passedCountC === totalCountC ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                )}
+                <span>C: {passedCountC}/{totalCountC}</span>
               </div>
             </div>
           )}
@@ -386,21 +432,30 @@ export const SelfTestView: React.FC = () => {
         renderTable(
           checkItemsA,
           'A. Engine reference (all data outside outage)',
-          'Deterministic comparison with training on all measured data outside the outage (29 reference checks)',
+          'Deterministic comparison with training on all measured data outside the outage (mode all, 4 sectors, smooth 1, turbulence off)',
           `${passedCountA} / ${totalCountA} Passed`
         )}
 
-      {/* Section B: Official Protocol Checks */}
+      {/* Section B: Official Protocol and Final Method Checks */}
       {checkItemsB.length > 0 &&
         renderTable(
           checkItemsB,
-          'B. Official protocol (training before outage)',
-          'Strict BayWa benchmark: training only on data before outage, tested on post-outage test period',
+          'B. Official protocol and final method',
+          'Strict BayWa benchmark: training = all test_set False, 8 sectors, 50-min smoothing, neighbours\' turbulence input',
           `${passedCountB} / ${totalCountB} Passed`
         )}
 
+      {/* Section C: Variant Checks */}
+      {checkItemsC.length > 0 &&
+        renderTable(
+          checkItemsC,
+          'C. Variant: training before the outage, 4 sectors',
+          'Variant benchmark: training strictly before outage, 4 sectors, smooth 1, turbulence off (42 checks)',
+          `${passedCountC} / ${totalCountC} Passed`
+        )}
+
       {/* Robustness Checks Section */}
-      {(engineResultA || engineResultB) && (
+      {(engineResultA || engineResultB || engineResultC) && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 dark:border-slate-700/60">
             <Cpu className="w-5 h-5 text-slate-600 dark:text-slate-400" />

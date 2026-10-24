@@ -50,6 +50,8 @@ export interface CalculationOptions {
   manualParkCombination?: string[]; // user override of chosen combination
   trainingOption?: TrainingDataOption;
   nSectors?: number;
+  smooth?: number;
+  turbulence?: boolean;
 }
 
 export interface EngineResult {
@@ -121,6 +123,8 @@ export function runLossEstimation(
 
   // 3. Known stamps mask - default is 'notTest' if test_set column has true values, else 'before_outage'
   const nSectors = options.nSectors ?? 8;
+  const smooth = options.smooth ?? 5;
+  const turbulence = options.turbulence ?? true;
   const hasTestSetFlags = Object.values(grid.testSet || {}).some((arr) => arr.some(Boolean));
   const trainingOption = options.trainingOption || (hasTestSetFlags ? 'notTest' : 'before_outage');
   const knownMask = getKnownMask(
@@ -155,7 +159,10 @@ export function runLossEstimation(
         onProgress('backtest', pct, `Backtesting park combination ${key} (${curr}/${total})...`);
       }
     },
-    nSectors
+    nSectors,
+    smooth,
+    turbulence,
+    screening.usedTurbines
   );
 
   // User override if requested
@@ -177,7 +184,10 @@ export function runLossEstimation(
         screening.parkMeans,
         screening.directionResult.sectors,
         powerCurvesMap,
-        nSectors
+        nSectors,
+        smooth,
+        turbulence,
+        screening.usedTurbines
       );
       customRes.isChosen = true;
       activeChosen = customRes;
@@ -196,7 +206,9 @@ export function runLossEstimation(
     screening.directionResult.sectors,
     powerCurvesMap,
     screening.usedTurbines,
-    nSectors
+    nSectors,
+    smooth,
+    turbulence
   );
 
   // 7. Evaluate test period (after the outage)

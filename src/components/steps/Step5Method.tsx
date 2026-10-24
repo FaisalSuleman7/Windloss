@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CalendarCheck,
   Activity,
+  Sliders,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -30,12 +31,23 @@ import { formatPercent, formatCoeff } from '../../utils/formatters';
 
 interface Step5MethodProps {
   result: EngineResult;
+  onUpdateMethodOptions?: (nSectors: number, smooth: number, turbulence: boolean) => void;
+  isCalculating?: boolean;
 }
 
-export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
+export const Step5Method: React.FC<Step5MethodProps> = ({
+  result,
+  onUpdateMethodOptions,
+  isCalculating = false,
+}) => {
   const { report, chosenCombination } = result;
   const turbinesList = Object.values(report.turbines);
   const targetTurbines = report.targetTurbines;
+
+  const currentNSectors = report.methodOptions?.nSectors ?? 8;
+  const currentSmooth = report.methodOptions?.smooth ?? 5;
+  const currentTurbulence = report.methodOptions?.turbulence ?? true;
+  const isNotTest = report.trainingOption === 'notTest';
 
   // Test period mode switch: flagged vs all_after
   const [testPeriodMode, setTestPeriodMode] = useState<'flagged' | 'all_after'>(
@@ -54,7 +66,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
 
   // Active test period result
   const activeTP =
-    testPeriodMode === 'all_after' && report.testPeriodAll
+    !isNotTest && testPeriodMode === 'all_after' && report.testPeriodAll
       ? report.testPeriodAll
       : report.testPeriod;
 
@@ -168,6 +180,89 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
         </div>
       </div>
 
+      {/* Model Parameters Control Box */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <Sliders className="w-4 h-4 text-blue-600" />
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                Model Parameters
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Official defaults: 8 sectors, 5 steps (50 min) smoothing, turbulence enabled.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            {/* Number of wind sectors */}
+            <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 px-1.5">
+                Sectors:
+              </span>
+              {[4, 8].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => onUpdateMethodOptions?.(s, currentSmooth, currentTurbulence)}
+                  disabled={isCalculating}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                    currentNSectors === s
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {s} {s === 8 ? '(default)' : ''}
+                </button>
+              ))}
+            </div>
+
+            {/* Park-mean smoothing */}
+            <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 px-1.5">
+                Smoothing:
+              </span>
+              {[
+                { val: 1, label: '1 (raw)' },
+                { val: 3, label: '3 (30 min)' },
+                { val: 5, label: '5 (50 min, default)' },
+              ].map((opt) => (
+                <button
+                  key={opt.val}
+                  onClick={() => onUpdateMethodOptions?.(currentNSectors, opt.val, currentTurbulence)}
+                  disabled={isCalculating}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                    currentSmooth === opt.val
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Turbulence toggle */}
+            <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 px-1.5">
+                Turbulence:
+              </span>
+              <button
+                onClick={() => onUpdateMethodOptions?.(currentNSectors, currentSmooth, !currentTurbulence)}
+                disabled={isCalculating}
+                className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                  currentTurbulence
+                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                {currentTurbulence ? '✓ On (default)' : 'Off'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 1. New First Card: Accuracy on the test period (after the outage) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden space-y-4 p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -194,7 +289,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
               onClick={() => setTestPeriodMode('flagged')}
               disabled={!report.testPeriod?.hasFlagged}
               className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                testPeriodMode === 'flagged'
+                testPeriodMode === 'flagged' || isNotTest
                   ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 shadow-xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               } ${!report.testPeriod?.hasFlagged ? 'opacity-40 cursor-not-allowed' : ''}`}
@@ -203,11 +298,17 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
             </button>
             <button
               onClick={() => setTestPeriodMode('all_after')}
+              disabled={isNotTest}
+              title={
+                isNotTest
+                  ? 'In the official protocol, test days are fixed across the entire dataset; evaluation is strictly on those flagged rows.'
+                  : undefined
+              }
               className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                testPeriodMode === 'all_after'
+                !isNotTest && testPeriodMode === 'all_after'
                   ? 'bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-300 shadow-xs font-semibold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
+              } ${isNotTest ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               All data after the outage
             </button>
@@ -540,16 +641,23 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
         </h3>
         <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed space-y-2 font-normal">
           <p>
-            <strong>1. Atmospheric Travel Delays:</strong> Because wind fronts take time to travel between parks, we identify the integer lag k in [-6, ..., +6] (10-minute steps) maximizing the Pearson correlation between each reference park and the target turbine.
+            <strong>1. Atmospheric Travel Delays:</strong> Because wind fronts take time to travel between parks, we identify the integer lag k in [-6, ..., +6] (10-minute steps) maximizing the Pearson correlation between raw reference park means and the target turbine.
           </p>
           <p>
-            <strong>2. Directional OLS with Bayesian Shrinkage:</strong> Wind behavior varies by wind direction. We partition the wind rose into four 90° quadrants (N, E, S, W) and fit sector-specific Ordinary Least Squares (OLS) regressions blended with a global formula using shrinkage weight w = n_s / (n_s + 300).
+            <strong>2. Reference Smoothing:</strong> Centred running mean over {report.methodOptions?.smooth ?? 5} steps ({((report.methodOptions?.smooth ?? 5) * 10)} min) on reference park means for regression and prediction, removing high-frequency micro-scale noise while preserving meso-scale wind fronts.
           </p>
           <p>
-            <strong>3. Missing Park Imputation:</strong> If a reference park has temporary missing readings during the outage, the model rescales the active reference weights proportionally rather than failing or assuming zero wind.
+            <strong>3. {report.methodOptions?.nSectors ?? 8}-Sector Regression with Turbulence:</strong>
+            <span className="block font-mono text-xs my-1 bg-slate-100 dark:bg-slate-800 p-2 rounded">
+              v_T(t) = a_H &middot; v_H_smooth(t - k_H) + a_O &middot; v_O_smooth(t - k_O) + d &middot; S_smooth(t) + c
+            </span>
+            Partitioning the wind rose into {report.methodOptions?.nSectors ?? 8} directional sectors and including neighbour turbulence S(t) (standard deviation of wind speed).
           </p>
           <p>
-            <strong>4. Gauss-Hermite Power Integration:</strong> Power curves are non-linear (cubic curve). Converting the predicted (smooth) wind directly to power systematically underestimates production, because the curve is steepest where most wind speeds lie. We integrate expected power E[P] over the residual prediction spread σ using a 21-node Gauss-Hermite quadrature, and sum energy with the exact 1/6 h multiplier.
+            <strong>4. Empirical Bayes Shrinkage & Imputation:</strong> Blend weight w_s = n_s / (n_s + 300) shrinks sector fits toward the global isotropic regression to prevent overfitting in sparsely populated wind directions. Missing park readings during outage are imputed proportionally from active references.
+          </p>
+          <p>
+            <strong>5. Power Curve Integration with Gauss-Hermite Quadrature:</strong> Converting predicted wind directly to power underestimates production due to power curve nonlinearity. We integrate expected power E[P] over residual spread &sigma; using a 21-node Gauss-Hermite quadrature, and compute empirical 80% confidence intervals [d10, d90] from backtest error percentiles.
           </p>
         </div>
       </div>
@@ -562,7 +670,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
               Model Coefficients & Delays per Turbine and Sector
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Formula: v_t = Sum a_P · X_P(tau - lag_P) + c
+              Formula: v_T(t) = &Sigma; a_P &middot; v_P(t - k_P) {currentTurbulence ? '+ d \u00B7 S(t) ' : ''}+ c
             </p>
           </div>
         </div>
@@ -587,7 +695,7 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                     </span>
                   ))}
                   <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                    σ_global = {t.model.sigmaGlobal.toFixed(4)} m/s
+                    &sigma;_global = {t.model.sigmaGlobal.toFixed(4)} m/s
                   </span>
                 </div>
               </div>
@@ -597,21 +705,26 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                   <thead className="text-slate-500 border-b border-slate-200 dark:border-slate-700 font-semibold">
                     <tr>
                       <th className="py-1.5">Sector</th>
-                      <th className="py-1.5">Rows (n_s)</th>
+                      <th className="py-1.5">Count (n_s)</th>
                       <th className="py-1.5">Blend Weight (w)</th>
                       {report.chosenParks.map((p) => (
                         <th key={p} className="py-1.5 text-right">
-                          Coeff a_{p}
+                          a_{p}
                         </th>
                       ))}
-                      <th className="py-1.5 text-right">Intercept c</th>
+                      {currentTurbulence && (
+                        <th className="py-1.5 text-right">
+                          d (turbulence)
+                        </th>
+                      )}
+                      <th className="py-1.5 text-right">c (intercept)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                     {t.model.sectorModels.map((sec) => (
                       <tr key={sec.sector} className="hover:bg-slate-100/50 dark:hover:bg-slate-700/30">
                         <td className="py-1.5 font-sans font-bold text-slate-800 dark:text-slate-200">
-                          {sec.name} ({sec.sector * 90}°)
+                          {sec.name} ({Math.round(sec.sector * (360 / t.model.sectorModels.length))}°)
                         </td>
                         <td className="py-1.5 text-slate-600 dark:text-slate-400">{sec.nRows}</td>
                         <td className="py-1.5 text-slate-600 dark:text-slate-400">
@@ -622,6 +735,11 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                             {formatCoeff(sec.aParks[p])}
                           </td>
                         ))}
+                        {currentTurbulence && (
+                          <td className="py-1.5 text-right font-bold text-amber-700 dark:text-amber-400">
+                            {formatCoeff(sec.dTurbulence ?? 0)}
+                          </td>
+                        )}
                         <td className="py-1.5 text-right text-slate-700 dark:text-slate-300">
                           {formatCoeff(sec.c)}
                         </td>
@@ -629,6 +747,12 @@ export const Step5Method: React.FC<Step5MethodProps> = ({ result }) => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Turbulence Note at bottom of table */}
+              <div className="pt-2 text-[11px] text-slate-500 dark:text-slate-400 italic">
+                {report.turbulenceNote ||
+                  "Turbulence feature: using H-park wind_speed_stddev smoothed over 50 min (O has no stddev). Turbines with stddev coverage >50% are averaged; missing values imputed with training median."}
               </div>
             </div>
           ))}
