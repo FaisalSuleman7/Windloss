@@ -1,0 +1,38 @@
+FINAL METHOD UPDATE (replaces any earlier MSG11). Implement all parts. Do NOT change the lag search, the shrinkage (300), the power integration, the 80 % range formula or any existing Self-test value.
+
+PART 1 - TRAINING = EVERY RECORD NOT FLAGGED AS TEST (mentors' protocol)
+1a. Engine: new training mode "notTest": fit/known mask = (existing: target measured and outside the outage) AND test_set is not true. Lag search, sector OLS, sigma table, backtest windows, reference-park selection and density use this mask exactly like the existing "before" mode uses its mask. Backtest window rule unchanged (start at first known stamp, every 84 h, 72-h windows, skip if under 50 % target values over the whole window or under 216 known stamps; fit = known minus window and 12 h each side). Demo: 23 windows (17 in Jul-Aug, 6 in Sep).
+1b. Step 3 training options: "All data not flagged as test (official protocol)" = notTest, DEFAULT when the files have a test_set column with at least one true value; "Before the outage only" = existing before mode, DEFAULT without test_set; "All measured data outside the outage (not for evaluation)" = existing all mode (keep its warning). Timeline: grey "Training + validation" for every non-test, non-outage part (demo: 1 Jul - 31 Aug and 10 - 30 Sep), pink "Blind test (outage)", amber "Test (shown)" for flagged days after the outage. Sentence: "The model learns from the grey parts (all records not flagged as test), is checked inside them with backtest windows, predicts the pink part, and is scored on the amber part it has never seen."
+1c. Step 5 test table: test period unchanged (flagged stamps after the outage, 4-9 Sep). With notTest the switch "All data after the outage" is disabled (tooltip "these days are training data in the official protocol"). "Not a fair test" warning whenever a test stamp was used for training.
+1d. Step 4 correlation map, reference table and time-delay chart use the CURRENT training mask (title "... (training data)").
+
+PART 2 - MODEL: 8 SECTORS + 50-MIN SMOOTHING + TURBULENCE INPUT
+2a. Sectors: parameter nSectors (4 or 8), sector = floor(((dir + 180/nSectors) mod 360) / (360/nSectors)); names for 8: N, NE, E, SE, S, SW, W, NW. A sector with fewer than 30 rows uses the global formula (as now).
+2b. Smoothing: parameter smooth (1, 3 or 5 steps). Each park-mean series is replaced by its CENTRED running mean over `smooth` stamps (t-2..t+2 for 5), averaging only available values (missing if none). The lag search stays on the UNSMOOTHED park means (as now); the regression and the prediction use the smoothed series shifted by the lag.
+2c. Turbulence input: parameter turbulence (on/off). S(t) = mean of wind_speed_stddev over the USED reference turbines whose stddev column is more than 50 % filled (demo: H1-H5; park O has none), averaging available values; then the same centred running mean as 2b; missing values = median of S over the fit mask; no time shift. If no reference has stddev, skip the input and show the note "no turbulence data - input skipped".
+2d. Regression per target and sector: v_T = a_H*H_s(t-lagH) + a_O*O_s(t-lagO) + d*S(t) + c, least squares; global formula the same; shrinkage w = n/(n+300) as now. If one park is missing at a stamp: v = (a_H + a_O)*(present park) + d*S + c. Sigma table from the in-sample residuals as now.
+2e. Defaults in the app: nSectors 8, smooth 5, turbulence on. Offer the three as controls in Step 5 ("Direction sectors 4/8", "Smoothing 1/3/5 steps", "Turbulence input on/off"); changing one re-runs. Step 5 coefficient tables: 8 rows per turbine with columns a_H, a_O, d (turbulence), c. Method text: "eight 45-degree sectors; park winds smoothed over 50 minutes; the turbulence of the reference turbines is one extra input". E-mail: "(separately for 8 wind directions, using the neighbours' turbulence)".
+
+PART 3 - REFERENCE-PARK SELECTION RULE (tie-break)
+For every park combination compute (as now) the score = median |dE| over the backtest windows and the mean wind RMSE. Combinations whose score is within 2.0 points of the best score are equal (noise); among them the one with the LOWEST wind RMSE is chosen. Show a column "within noise band" in the Step 4 table. (This does not change sections A and C of the Self-test - verified: H+O stays chosen there.)
+
+PART 4 - SELF-TEST
+Section A (29 checks) runs explicitly with mode all, nSectors 4, smooth 1, turbulence off. Rename the current section B (42 checks) to "C. Variant: training before the outage, 4 sectors" and run it with mode before, nSectors 4, smooth 1, turbulence off - values unchanged. New section "B. Official protocol and final method (notTest, 8 sectors, smooth 5, turbulence)":
+  Park energy 314,518.7 kWh (0.1 %) | T1 88,680.8 | T2 125,622.3 | T3 100,215.5 (0.1 %)
+  Park 80 % range 281,060 - 362,437 kWh (0.5 %)
+  Backtest windows 23 (exact); scores H 8.14 %, H+O 8.61 %, O 8.85 % (0.05), all within the noise band; wind RMSE H 1.241, H+O 1.127, O 1.222 (0.002) -> chosen H+O
+  Lags T1 H:-3 O:0 | T2 H:-3 O:1 | T3 H:-3 O:0 (exact)
+  sigma_global T1 1.1872 | T2 1.0837 | T3 1.0829 (0.001)
+  T1 predicted wind stamps 0,1,2: 8.7673, 8.6820, 8.6362 (0.001)
+  Density sensitivity -2.01 % (0.05) -> 308,212 kWh
+  Test 4-9 Sep (864 stamps per turbine):
+   T1 wind RMSE 1.3941 MAE 1.0910 r 0.8495 power RMSE 822.16 MAE 615.34 energy dev +13.20 %
+   T2 wind RMSE 1.2103 MAE 0.9009 r 0.8975 power RMSE 732.29 MAE 504.47 energy dev -1.02 %
+   T3 wind RMSE 1.3069 MAE 0.9989 r 0.8570 power RMSE 814.79 MAE 583.67 energy dev -3.37 %
+   Park measured 797,057 kWh, predicted 812,865 kWh, dev +1.98 %; pooled wind RMSE 1.3059, MAE 0.9969
+   (tolerance: wind 0.002, r 0.002, power 0.2 %, energy dev 0.05 points)
+  Correlation on the training data: O1-O2 0.9688, H3-H5 0.9158, T2-T3 0.8922, H2-T1 0.6508 ; mean of all references vs T1 0.7547, T2 0.8247, T3 0.8005 (0.002)
+  Best time shifts: T1 H -30 min O 0 ; T2 H -30 O +10 ; T3 H -30 O 0 (exact, equal to the model lags)
+  BayWa-format export (standard density): first row 2026-09-01 00:00,8.7673,9.3974,8.8191,9879.75,1646.624 ; last row 2026-09-03 23:50,5.8158,6.9492,6.3752,4216.33,702.722 ; sum park_energy_kwh 314,518.7 (0.1 %)
+
+FINAL CHECK: run the demo without touching anything -> Step 3 official option with two grey training parts; Step 4 chooses H+O "within noise band, lowest wind RMSE"; Step 5 shows 8 sectors, smoothing 5, turbulence on; Step 7 shows 314,519 kWh (281,060 - 362,437); Step 5 test row T1 1.39 / 1.09 / r 0.850 / 822 / 615 / +13.2 %; Self-test A 29/29, B all green, C 42/42.

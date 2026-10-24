@@ -31,8 +31,16 @@ export interface HighlightItem {
 export const TEAM: TeamMember[] = [
   {
     name: 'Hafiz Muhammad Faisal',
-    role: 'Team lead - method, engine and tool',
+    role: 'Power Engineering',
     affiliation: 'Technical University of Munich (TUM)',
+    photo: '',
+    linkedin: '',
+    email: '',
+  },
+  {
+    name: 'Karthik Alapati',
+    role: 'AI for Business',
+    affiliation: '',
     photo: '',
     linkedin: '',
     email: '',

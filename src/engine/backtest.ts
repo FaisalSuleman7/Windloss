@@ -81,7 +81,8 @@ export function runBacktestForCombination(
   combinationParks: string[],
   parkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
-  powerCurves: Record<string, PowerCurve>
+  powerCurves: Record<string, PowerCurve>,
+  nSectors: number = 8
 ): ParkCombinationResult {
   const { nRows, windSpeed } = grid;
   const { durationHours, targetTurbines } = outage;
@@ -178,7 +179,8 @@ export function runBacktestForCombination(
         combinationParks,
         parkMeans,
         sectors,
-        windowFitMask
+        windowFitMask,
+        nSectors
       );
 
       let sumSqWind = 0;
@@ -308,7 +310,8 @@ export function evaluateAllParkCombinations(
   parkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
   powerCurves: Record<string, PowerCurve>,
-  onProgress?: (combIndex: number, total: number, key: string) => void
+  onProgress?: (combIndex: number, total: number, key: string) => void,
+  nSectors: number = 8
 ): { results: ParkCombinationResult[]; chosenCombination: ParkCombinationResult } {
   const combinations = getParkCombinations(usedParks);
   const results: ParkCombinationResult[] = [];
@@ -326,7 +329,8 @@ export function evaluateAllParkCombinations(
       comb,
       parkMeans,
       sectors,
-      powerCurves
+      powerCurves,
+      nSectors
     );
     results.push(res);
   }

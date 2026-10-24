@@ -16,7 +16,7 @@ export interface OutageInfo {
   stampsCount: number;
 }
 
-export type TrainingDataOption = 'all_measured' | 'before_outage';
+export type TrainingDataOption = 'notTest' | 'before_outage' | 'all_measured';
 
 /**
  * Detects the longest outage of at least 6 hours (>= 36 stamps) across all parks.
@@ -167,6 +167,25 @@ export function getKnownMask(
 
     if (trainingOption === 'before_outage') {
       mask[t] = isKnown && t < outageStartIndex;
+    } else if (trainingOption === 'notTest') {
+      let isTest = false;
+      if (grid.testSet) {
+        for (const tName of targetTurbines) {
+          if (grid.testSet[tName]?.[t]) {
+            isTest = true;
+            break;
+          }
+        }
+        if (!isTest) {
+          for (const tName of grid.turbines) {
+            if (grid.testSet[tName]?.[t]) {
+              isTest = true;
+              break;
+            }
+          }
+        }
+      }
+      mask[t] = isKnown && !isTest;
     } else {
       mask[t] = isKnown;
     }

@@ -28,7 +28,7 @@ function getInitials(name: string): string {
 
 export const AboutTeamView: React.FC<AboutTeamViewProps> = ({ onBackToSteps }) => {
   // Up to 4 member cards (array is cut at 4)
-  const displayTeam = useMemo(() => TEAM.slice(0, 4), []);
+  const displayTeam = TEAM.slice(0, 4);
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto pb-12">
@@ -64,7 +64,7 @@ export const AboutTeamView: React.FC<AboutTeamViewProps> = ({ onBackToSteps }) =
         </div>
 
         {displayTeam.length > 0 && (
-          <div className="flex flex-wrap items-stretch justify-center gap-6">
+          <div className="flex flex-col sm:flex-row items-center sm:items-stretch justify-center gap-6">
             {displayTeam.map((member, idx) => (
               <div
                 key={idx}
@@ -94,9 +94,11 @@ export const AboutTeamView: React.FC<AboutTeamViewProps> = ({ onBackToSteps }) =
                   <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
                     {member.role}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {member.affiliation}
-                  </p>
+                  {member.affiliation && member.affiliation.trim() !== '' && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {member.affiliation}
+                    </p>
+                  )}
                 </div>
 
                 {/* Optional Social Icons */}

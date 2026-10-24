@@ -29,7 +29,8 @@ export interface TurbineModel {
   sigmaBins: number[]; // length 15 (bins 0..14)
 }
 
-const SECTOR_NAMES = ['N', 'E', 'S', 'W'];
+export const SECTOR_NAMES_4 = ['N', 'E', 'S', 'W'];
+export const SECTOR_NAMES_8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
 /**
  * Predicts wind speed at timestamp row `tau` using sector-blended OLS
@@ -42,7 +43,7 @@ export function predictWind(
 ): number {
   const s = sectors[tau];
   const beta =
-    Number.isNaN(s) || s < 0 || s > 3 || Math.floor(s) !== s
+    Number.isNaN(s) || s < 0 || s >= model.blendedBetas.length || Math.floor(s) !== s
       ? model.betaGlobal
       : model.blendedBetas[s];
 
@@ -102,7 +103,8 @@ export function fitTurbineModel(
   refParks: string[],
   parkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
-  fitMask: boolean[]
+  fitMask: boolean[],
+  nSectors: number = 8
 ): TurbineModel {
   const nRows = v_t.length;
   const sortedParks = [...refParks].sort();
@@ -195,8 +197,9 @@ export function fitTurbineModel(
   // 4. Sector formulas: OLS per sector with blended beta
   const sectorModels: SectorCoefficients[] = [];
   const blendedBetas: number[][] = [];
+  const sectorNames = nSectors === 4 ? SECTOR_NAMES_4 : SECTOR_NAMES_8;
 
-  for (let s = 0; s < 4; s++) {
+  for (let s = 0; s < nSectors; s++) {
     const sectorFitRows: number[] = [];
     for (const tau of globalFitRows) {
       if (sectors[tau] === s) {
@@ -231,7 +234,7 @@ export function fitTurbineModel(
 
     sectorModels.push({
       sector: s,
-      name: SECTOR_NAMES[s],
+      name: sectorNames[s] || `S${s}`,
       nRows: n_s,
       weight,
       aParks,

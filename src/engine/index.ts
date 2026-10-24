@@ -49,6 +49,7 @@ export interface CalculationOptions {
   };
   manualParkCombination?: string[]; // user override of chosen combination
   trainingOption?: TrainingDataOption;
+  nSectors?: number;
 }
 
 export interface EngineResult {
@@ -118,8 +119,10 @@ export function runLossEstimation(
     }
   }
 
-  // 3. Known stamps mask - default is now 'before_outage' (official protocol)
-  const trainingOption = options.trainingOption || 'before_outage';
+  // 3. Known stamps mask - default is 'notTest' if test_set column has true values, else 'before_outage'
+  const nSectors = options.nSectors ?? 8;
+  const hasTestSetFlags = Object.values(grid.testSet || {}).some((arr) => arr.some(Boolean));
+  const trainingOption = options.trainingOption || (hasTestSetFlags ? 'notTest' : 'before_outage');
   const knownMask = getKnownMask(
     grid,
     outage.targetTurbines,
@@ -130,7 +133,7 @@ export function runLossEstimation(
 
   // 4. Screening reference turbines and direction sectors
   if (onProgress) onProgress('screening', 40, 'Screening reference turbines and sectors...');
-  const screening = screenReferenceTurbines(grid, outage, knownMask);
+  const screening = screenReferenceTurbines(grid, outage, knownMask, nSectors);
 
   if (screening.usedTurbines.length === 0) {
     throw new Error('No reference turbines met the screening criteria (coverage >= 50% and r >= 0.50).');
@@ -151,7 +154,8 @@ export function runLossEstimation(
         const pct = Math.round(50 + (curr / total) * 35);
         onProgress('backtest', pct, `Backtesting park combination ${key} (${curr}/${total})...`);
       }
-    }
+    },
+    nSectors
   );
 
   // User override if requested
@@ -172,7 +176,8 @@ export function runLossEstimation(
         options.manualParkCombination,
         screening.parkMeans,
         screening.directionResult.sectors,
-        powerCurvesMap
+        powerCurvesMap,
+        nSectors
       );
       customRes.isChosen = true;
       activeChosen = customRes;
@@ -190,7 +195,8 @@ export function runLossEstimation(
     screening.parkMeans,
     screening.directionResult.sectors,
     powerCurvesMap,
-    screening.usedTurbines
+    screening.usedTurbines,
+    nSectors
   );
 
   // 7. Evaluate test period (after the outage)

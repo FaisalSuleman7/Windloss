@@ -74,7 +74,8 @@ export function generateFinalReport(
   parkMeans: Record<string, Float64Array>,
   sectors: Float64Array,
   powerCurves: Record<string, PowerCurve>,
-  usedTurbines: string[]
+  usedTurbines: string[],
+  nSectors: number = 8
 ): FinalReport {
   const { timestamps, dateStrings, windSpeed, airPressure, ambientTemperature, turbineParkMap } =
     grid;
@@ -106,7 +107,8 @@ export function generateFinalReport(
       chosenParks,
       parkMeans,
       sectors,
-      knownMask
+      knownMask,
+      nSectors
     );
 
     const predictedWindOutage = new Float64Array(stampsCount);

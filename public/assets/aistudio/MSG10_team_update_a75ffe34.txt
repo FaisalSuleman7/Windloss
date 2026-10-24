@@ -1,0 +1,9 @@
+Small content change only. Edit ONLY src/config/about.ts (and the team card if needed). Do NOT change anything else.
+
+1. Set the TEAM array exactly to:
+   { name: "Hafiz Muhammad Faisal", role: "Power Engineering", affiliation: "Technical University of Munich (TUM)", photo: "", linkedin: "", email: "" },
+   { name: "Karthik Alapati", role: "AI for Business", affiliation: "", photo: "", linkedin: "", email: "" },
+2. On the team card, if affiliation is empty, do not show an empty line.
+3. Show the two cards side by side and centred on desktop, stacked on phone. Initials in the navy circle: "HMF" and "KA".
+
+CHECK: About & Team shows exactly two cards: "Hafiz Muhammad Faisal - Power Engineering - Technical University of Munich (TUM)" and "Karthik Alapati - AI for Business". The text "Team lead - method, engine and tool" no longer appears anywhere. Self-test still A 29/29 and B 42/42.

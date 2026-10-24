@@ -87,7 +87,8 @@ export interface ReferenceScreeningResult {
 export function screenReferenceTurbines(
   grid: Grid,
   outage: OutageInfo,
-  knownMask: boolean[]
+  knownMask: boolean[],
+  nSectors: number = 8
 ): ReferenceScreeningResult {
   const { nRows, turbines, turbineParkMap, windSpeed, windDirection } = grid;
   const { targetPark, targetTurbines, startIndex, endIndex, stampsCount } = outage;
@@ -234,7 +235,9 @@ export function screenReferenceTurbines(
         let deg = (thetaRad * 180) / Math.PI;
         deg = ((deg % 360) + 360) % 360;
         referenceDirections[t] = deg;
-        sectors[t] = Math.floor(((deg + 45) % 360) / 90); // 0=N, 1=E, 2=S, 3=W
+        const halfSector = 180 / nSectors;
+        const sectorWidth = 360 / nSectors;
+        sectors[t] = Math.floor((((deg + halfSector) % 360) + 360) % 360 / sectorWidth);
       } else {
         referenceDirections[t] = NaN;
         sectors[t] = NaN;
@@ -245,13 +248,14 @@ export function screenReferenceTurbines(
     referenceDirections.fill(NaN);
   }
 
-  // Correlation analysis on training data before outage (0 <= t < startIndex)
+  // Correlation analysis on current training data mask
   const correlationAnalysis = computeCorrelationAnalysis(
     grid,
     outage,
     usedTurbines,
     usedParks,
-    parkMeans
+    parkMeans,
+    knownMask
   );
 
   return {
@@ -279,10 +283,12 @@ export function computeCorrelationAnalysis(
   outage: OutageInfo,
   usedTurbines: string[],
   usedParks: string[],
-  parkMeans: Record<string, Float64Array>
+  parkMeans: Record<string, Float64Array>,
+  knownMask?: boolean[]
 ): CorrelationAnalysisResult {
   const { windSpeed, turbineParkMap, nRows } = grid;
   const { startIndex, targetTurbines, targetPark } = outage;
+  const isIncluded = (t: number) => (knownMask ? knownMask[t] : t < startIndex);
 
   const rows: CorrelationRow[] = [];
   let singleNeighbourMinR = Infinity;
@@ -299,7 +305,8 @@ export function computeCorrelationAnalysis(
       const xVals: number[] = [];
       const yVals: number[] = [];
 
-      for (let t = 0; t < startIndex; t++) {
+      for (let t = 0; t < nRows; t++) {
+        if (!isIncluded(t)) continue;
         const xr = refSeries ? refSeries[t] : NaN;
         const yt = tgtSeries ? tgtSeries[t] : NaN;
         if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
@@ -334,7 +341,8 @@ export function computeCorrelationAnalysis(
       const xVals: number[] = [];
       const yVals: number[] = [];
 
-      for (let t = 0; t < startIndex; t++) {
+      for (let t = 0; t < nRows; t++) {
+        if (!isIncluded(t)) continue;
         const xr = meanSeries ? meanSeries[t] : NaN;
         const yt = tgtSeries ? tgtSeries[t] : NaN;
         if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
@@ -356,8 +364,12 @@ export function computeCorrelationAnalysis(
   }
 
   // 3. Row "Mean of all reference turbines" (mean of all used reference turbines at each stamp)
-  const allRefMeanSeries = new Float64Array(startIndex);
-  for (let t = 0; t < startIndex; t++) {
+  const allRefMeanSeries = new Float64Array(nRows);
+  for (let t = 0; t < nRows; t++) {
+    if (!isIncluded(t)) {
+      allRefMeanSeries[t] = NaN;
+      continue;
+    }
     let sum = 0;
     let count = 0;
     for (const ref of usedTurbines) {
@@ -376,7 +388,8 @@ export function computeCorrelationAnalysis(
     const xVals: number[] = [];
     const yVals: number[] = [];
 
-    for (let t = 0; t < startIndex; t++) {
+    for (let t = 0; t < nRows; t++) {
+      if (!isIncluded(t)) continue;
       const xr = allRefMeanSeries[t];
       const yt = tgtSeries ? tgtSeries[t] : NaN;
       if (!Number.isNaN(xr) && !Number.isNaN(yt)) {
@@ -432,7 +445,8 @@ export function computeCorrelationAnalysis(
       const xVals: number[] = [];
       const yVals: number[] = [];
 
-      for (let t = 0; t < startIndex; t++) {
+      for (let t = 0; t < nRows; t++) {
+        if (!isIncluded(t)) continue;
         const va = sA ? sA[t] : NaN;
         const vb = sB ? sB[t] : NaN;
         if (!Number.isNaN(va) && !Number.isNaN(vb)) {
@@ -476,7 +490,8 @@ export function computeCorrelationAnalysis(
         const xVals: number[] = [];
         const yVals: number[] = [];
 
-        for (let tau = 0; tau < startIndex; tau++) {
+        for (let tau = 0; tau < nRows; tau++) {
+          if (!isIncluded(tau)) continue;
           const j = tau - k;
           if (j < 0 || j >= nRows) continue;
 
